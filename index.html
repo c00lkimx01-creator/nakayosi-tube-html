@@ -1128,7 +1128,7 @@ async function manifestHunt(videoId) {
     'https://api.allorigins.win/raw?url=', // Proxy A
     'https://corsproxy.io/?'               // Proxy B
   ];
-  const apiBase = `https://siawaseok.f5.si/api/streams/${videoId}/type2`;
+  const apiBase = `https://siawaseok.f5.si/api/streams/${videoId}`;
 
   for (const proxy of proxies) {
     try {
