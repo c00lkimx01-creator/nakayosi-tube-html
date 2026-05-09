@@ -486,6 +486,50 @@ input:checked + .slider:before { transform: translateX(20px); }
   border-radius: 4px; z-index: 10; max-width: 200px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+.recommend-scroll { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 12px; scrollbar-width: thin; }
+.recommend-scroll::-webkit-scrollbar { height: 8px; }
+.recommend-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+.recommend-scroll .video-card { flex: 0 0 320px; }
+@media (max-width: 600px) { .recommend-scroll .video-card { flex: 0 0 260px; } }
+.home-short-card { flex: 0 0 220px !important; }
+.home-short-thumb { aspect-ratio: 9/16; }
+/* シアターモード */
+.watch-layout.theater { display: block !important; max-width: 100% !important; }
+.watch-layout.theater .watch-main { max-width: 100% !important; width: 100% !important; }
+.watch-layout.theater .watch-sidebar { display: none !important; }
+.watch-layout.theater .player-container { width: 100%; max-height: 80vh; aspect-ratio: 16/9; }
+.theater-btn { background: var(--chip-bg); border: none; padding: 8px 14px; border-radius: 18px; font-size: 13px; cursor: pointer; color: var(--text-color); display: inline-flex; align-items: center; gap: 6px; margin: 8px 0; }
+.theater-btn:hover { background: var(--chip-hover); }
+.theater-btn svg { width: 16px; height: 16px; fill: currentColor; }
+/* 検索履歴ドロップダウン */
+.search-suggestions { position: absolute; top: 100%; left: 0; right: 48px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 0 0 12px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); z-index: 1000; max-height: 360px; overflow-y: auto; display: none; }
+.search-suggestions.open { display: block; }
+.search-suggestion-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer; font-size: 14px; }
+.search-suggestion-item:hover { background: var(--hover-color); }
+.search-suggestion-item svg { width: 16px; height: 16px; fill: var(--text-secondary); flex-shrink: 0; }
+.search-suggestion-remove { margin-left: auto; color: var(--text-secondary); font-size: 12px; }
+.search-bar { position: relative; }
+.category-chip.search-history-chip { background: var(--chip-bg); border: 1px dashed var(--border-color); }
+/* 再生リスト */
+.playlist-card { display: flex; gap: 12px; padding: 12px; border-radius: 10px; border: 1px solid var(--border-color); margin-bottom: 10px; cursor: pointer; }
+.playlist-card:hover { background: var(--hover-color); }
+.playlist-thumb { width: 160px; aspect-ratio: 16/9; border-radius: 8px; background: var(--hover-color); overflow: hidden; flex-shrink: 0; position: relative; }
+.playlist-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.playlist-count { position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.7); color:#fff; font-size: 11px; padding: 2px 6px; border-radius: 3px; }
+.playlist-info { flex: 1; }
+.playlist-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.playlist-meta { font-size: 12px; color: var(--text-secondary); }
+.add-to-playlist-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: none; align-items: center; justify-content: center; }
+.add-to-playlist-modal.open { display: flex; }
+.add-to-playlist-box { background: var(--bg-color); padding: 20px; border-radius: 12px; min-width: 320px; max-width: 90vw; max-height: 80vh; overflow-y: auto; }
+.add-to-playlist-box h3 { font-size: 16px; margin-bottom: 12px; font-weight: 600; }
+.playlist-option { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 6px; cursor: pointer; }
+.playlist-option:hover { background: var(--hover-color); }
+.new-playlist-row { display:flex; gap: 8px; margin-top: 12px; }
+.new-playlist-row input { flex:1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); }
+.new-playlist-row button { padding: 8px 14px; border-radius: 6px; background: var(--primary-color); color: #fff; border: none; cursor: pointer; }
+
 </style>
 </head>
 <body>
@@ -518,7 +562,9 @@ input:checked + .slider:before { transform: translateX(20px); }
   </div>
   <div class="header-center">
     <form class="search-bar" onsubmit="handleSearch(event)">
-      <input type="text" id="search-input" placeholder="検索" autocomplete="off">
+      <input type="text" id="search-input" placeholder="検索" autocomplete="off"
+             onfocus="showSearchSuggestions()" onblur="setTimeout(hideSearchSuggestions,200)" oninput="showSearchSuggestions()">
+      <div class="search-suggestions" id="search-suggestions"></div>
       <button type="submit">
         <svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:currentColor;stroke:none;"><path d="M20.87,20.17l-5.59-5.59C16.35,13.35,17,11.75,17,10c0-3.87-3.13-7-7-7s-7,3.13-7,7s3.13,7,7,7c1.75,0,3.35-0.65,4.58-1.71 l5.59,5.59L20.87,20.17z M10,16c-3.31,0-6-2.69-6-6s2.69-6,6-6s6,2.69,6,6S13.31,16,10,16z"></path></svg>
       </button>
@@ -554,6 +600,10 @@ input:checked + .slider:before { transform: translateX(20px); }
   <div class="sidebar-item" id="nav-subscriptions" onclick="navigate('subscriptions')">
     <svg viewBox="0 0 24 24"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" style="fill:currentColor;stroke:none;"/></svg>
     <span class="label">登録チャンネル</span>
+  </div>
+  <div class="sidebar-item" id="nav-playlists" onclick="navigate('playlists')">
+    <svg viewBox="0 0 24 24"><path d="M22 7H2v1h20V7zm-9 5H2v1h11v-1zM2 17h11v1H2v-1zm13-1.5v7l6-3.5-6-3.5z" style="fill:currentColor;stroke:none;"/></svg>
+    <span class="label">再生リスト</span>
   </div>
   <div class="sidebar-item" id="nav-history" onclick="navigate('history')">
     <svg viewBox="0 0 24 24"><path d="M14.97,16.95L10,13.87V7h2v5.76l4.03,2.49L14.97,16.95z M12,3c-4.96,0-9,4.04-9,9s4.04,9,9,9s9-4.04,9-9S16.96,3,12,3" style="fill:currentColor;stroke:none;"/></svg>
@@ -649,7 +699,7 @@ input:checked + .slider:before { transform: translateX(20px); }
         <svg viewBox="0 0 24 24" style="fill:var(--primary-color);stroke:none;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         あなたへのおすすめ
       </div>
-      <div class="video-grid" id="home-recommend-grid"></div>
+      <div class="recommend-scroll" id="home-recommend-grid"></div>
     </div>
     <div id="home-shorts" class="home-shorts-section hidden">
       <div class="home-shorts-title">
@@ -754,6 +804,7 @@ input:checked + .slider:before { transform: translateX(20px); }
         <div class="player-container" id="player-wrapper">
           <iframe id="yt-player" allow="autoplay; fullscreen" allowfullscreen></iframe>
         </div>
+        <button class="theater-btn" onclick="toggleTheaterMode()" id="theater-btn"><svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg><span id="theater-btn-label">シアターモード</span></button>
         <h1 class="watch-title" id="watch-title-text">タイトル</h1>
         <div class="watch-actions">
           <div class="watch-channel-info" id="watch-channel-trigger">
@@ -789,6 +840,10 @@ input:checked + .slider:before { transform: translateX(20px); }
               <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;stroke:none;"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg>
               共有
             </button>
+            <button class="action-btn" onclick="openAddToPlaylist()">
+              <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;stroke:none;"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm19.5-4.5L23 13l-6.99 7-4.51-4.5L13 14l3.01 3 5.49-5.5z"/></svg>
+              保存
+            </button>
           </div>
         </div>
         <div class="video-description" onclick="toggleDescription()">
@@ -811,6 +866,21 @@ input:checked + .slider:before { transform: translateX(20px); }
     </div>
   </div>
 
+  <!-- 再生リスト -->
+  <div id="view-playlists" class="view">
+    <h2 style="margin-bottom:20px;">再生リスト</h2>
+    <div style="margin-bottom:16px;display:flex;gap:8px;">
+      <input type="text" id="new-playlist-input" placeholder="新しい再生リスト名" style="flex:1;max-width:300px;padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text-color);">
+      <button onclick="createPlaylistFromInput()" style="padding:8px 16px;border-radius:8px;background:var(--primary-color);color:#fff;border:none;cursor:pointer;">作成</button>
+    </div>
+    <div id="playlists-grid"></div>
+  </div>
+  <!-- 再生リスト詳細 -->
+  <div id="view-playlist-detail" class="view">
+    <button onclick="navigate('playlists')" style="margin-bottom:16px;background:none;border:none;color:var(--text-color);cursor:pointer;font-size:14px;">← 戻る</button>
+    <h2 id="playlist-detail-title" style="margin-bottom:20px;">再生リスト</h2>
+    <div id="playlist-detail-grid" class="video-grid"></div>
+  </div>
   <!-- 履歴 -->
   <div id="view-history" class="view">
     <h2 style="margin-bottom:20px;">視聴履歴</h2>
@@ -874,6 +944,17 @@ input:checked + .slider:before { transform: translateX(20px); }
   </div>
 
 </main>
+<div class="add-to-playlist-modal" id="add-to-playlist-modal" onclick="if(event.target===this)closeAddToPlaylist()">
+  <div class="add-to-playlist-box">
+    <h3>再生リストに保存</h3>
+    <div id="playlist-options-list"></div>
+    <div class="new-playlist-row">
+      <input type="text" id="modal-new-playlist" placeholder="新規作成">
+      <button onclick="createAndAddToPlaylist()">作成</button>
+    </div>
+    <button onclick="closeAddToPlaylist()" style="margin-top:12px;background:none;border:none;color:var(--text-secondary);cursor:pointer;">閉じる</button>
+  </div>
+</div>
 
 <script>
 // =================== ベース設定 ===================
@@ -1697,12 +1778,17 @@ async function loadRecommendations() {
 // =================== APIフェッチ ===================
 async function fetchFromInvidious(query, context, page = 1) {
   let q = query; if (context === 'shorts') q += ' #shorts';
-  for (let instance of INVIDIOUS_INSTANCES) {
-    try {
-      const url = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(q)}&page=${page}`);
-      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (res.ok) return await res.json();
-    } catch(e) {}
+  // 並列レース: 最初に成功したインスタンスを採用（最速化）
+  const tryInst = (instance) => {
+    const url = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(q)}&page=${page}`);
+    return fetch(url, { signal: AbortSignal.timeout(7000) }).then(r => {
+      if(!r.ok) throw new Error('bad'); return r.json();
+    }).then(d => { if(!d || (Array.isArray(d) && d.length===0)) throw new Error('empty'); return d; });
+  };
+  const batchSize = 8;
+  for(let i=0; i<INVIDIOUS_INSTANCES.length; i+=batchSize){
+    const batch = INVIDIOUS_INSTANCES.slice(i, i+batchSize).map(tryInst);
+    try { return await Promise.any(batch); } catch(e) {}
   }
   return null;
 }
@@ -1949,7 +2035,7 @@ function updateChannelHeaderInfo(channelInfo) {
   if (!channelInfo) return;
   const nameEl = document.getElementById('channel-page-name'), handleEl = document.getElementById('channel-page-handle'), metaEl = document.getElementById('channel-page-meta'), iconEl = document.getElementById('channel-page-icon');
   if (channelInfo.author) nameEl.innerText = channelInfo.author;
-  if (channelInfo.authorId) { handleEl.innerText = `@${channelInfo.authorId}`; currentChannelId = channelInfo.authorId; try { history.replaceState({ view: 'channel', channelId: channelInfo.authorId }, '', `/channel/${channelInfo.authorId}`); } catch(e) {} }
+  if (channelInfo.authorId) { handleEl.innerText = `@${channelInfo.authorId}`; currentChannelId = channelInfo.authorId; try { history.replaceState({ view: 'channel', channelId: channelInfo.authorId }, '', `#/channel/${channelInfo.authorId}`); } catch(e) {} }
   if (channelInfo.subCount) metaEl.innerText = `登録者数 ${formatSubCount(channelInfo.subCount)} • 動画 ${channelInfo.videoCount||'--'}件`;
   if (channelInfo.authorThumbnails && channelInfo.authorThumbnails.length > 0) iconEl.src = channelInfo.authorThumbnails[channelInfo.authorThumbnails.length-1].url;
   if (channelInfo.authorBanners && channelInfo.authorBanners.length > 0) {
@@ -2034,7 +2120,9 @@ function navigateToShortPage(videoId, title, channel, thumb, noHistory = false) 
 
 // =================== ショートストリーム (3タイプ: NC/Edu/Manifest) ===================
 function buildShortNocookieSrc(videoId) {
-  return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&rel=0`;
+  // 音あり再生対応 (mute=0)。ブラウザの自動再生制限がかかる場合はユーザー操作で再生。
+  const m = window._shortMuted ? 1 : 0;
+  return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=${m}&loop=1&playlist=${videoId}&rel=0&enablejsapi=1`;
 }
 function buildShortEduSrc(videoId, key) {
   if (!key) return buildShortNocookieSrc(videoId);
@@ -2385,7 +2473,7 @@ function handleSearch(e, externalQuery = null) {
   document.getElementById('search-shorts-section').classList.add('hidden');
   document.getElementById('search-shorts-container').innerHTML = '';
   document.getElementById('search-results-list').innerHTML = '';
-  try { history.pushState({ view: 'search', query: q }, '', `/search?q=${encodeURIComponent(q)}`); } catch(e) {}
+  try { history.pushState({ view: 'search', query: q }, '', `#/search?q=${encodeURIComponent(q)}`); } catch(e) {}
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-search')?.classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
@@ -2421,7 +2509,7 @@ function openChannel(channelName, thumb = null) {
     if (info.authorId) {
       currentChannelId = info.authorId;
       document.getElementById('channel-page-handle').innerText = `@${info.authorId}`;
-      try { history.replaceState({ view: 'channel', channelId: info.authorId, channelName }, '', `/channel/${info.authorId}`); } catch(e) {}
+      try { history.replaceState({ view: 'channel', channelId: info.authorId, channelName }, '', `#/channel/${info.authorId}`); } catch(e) {}
     }
     if (info.subCount) document.getElementById('channel-page-meta').innerText = `登録者数 ${formatSubCount(info.subCount)} • 動画 ${info.videoCount||'--'}件`;
     if (info.authorThumbnails && info.authorThumbnails.length > 0) {
@@ -2575,18 +2663,19 @@ function navigate(viewName, opts = {}) {
   document.getElementById('main-content').classList.remove('sidebar-open');
 
   if (!opts.noHistory) {
-    let url = '/';
-    if (viewName === 'home') url = '/home';
-    else if (viewName === 'history') url = '/feed/history';
-    else if (viewName === 'settings') url = '/setting';
-    else if (viewName === 'subscriptions') url = '/feed/subscriptions';
-    else if (viewName === 'search') url = lastQuery ? `/search?q=${encodeURIComponent(lastQuery)}` : '/search';
-    else if (viewName === 'channel') url = currentChannelId ? `/channel/${currentChannelId}` : '/channel';
-    else if (viewName === 'welcome') url = '/';
-    else if (viewName === 'watch' && opts.videoId) url = `/watch?v=${opts.videoId}`;
-    else if (viewName === 'shorts' && opts.videoId) url = `/shorts/${opts.videoId}`;
-    else if (viewName === 'shorts') url = '/shorts';
-    try { history.pushState({ view: viewName, ...opts }, '', url); } catch(e) {}
+    let hash = '#/';
+    if (viewName === 'home') hash = '#/home';
+    else if (viewName === 'history') hash = '#/feed/history';
+    else if (viewName === 'settings') hash = '#/setting';
+    else if (viewName === 'subscriptions') hash = '#/feed/subscriptions';
+    else if (viewName === 'playlists') hash = '#/playlists';
+    else if (viewName === 'search') hash = lastQuery ? `#/search?q=${encodeURIComponent(lastQuery)}` : '#/search';
+    else if (viewName === 'channel') hash = currentChannelId ? `#/channel/${currentChannelId}` : '#/channel';
+    else if (viewName === 'welcome') hash = '#/';
+    else if (viewName === 'watch' && opts.videoId) hash = `#/watch?v=${opts.videoId}`;
+    else if (viewName === 'shorts' && opts.videoId) hash = `#/shorts/${opts.videoId}`;
+    else if (viewName === 'shorts') hash = '#/shorts';
+    try { history.pushState({ view: viewName, ...opts }, '', hash); } catch(e) {}
   }
 }
 
@@ -2611,7 +2700,9 @@ window.addEventListener('popstate', (e) => {
 });
 
 function parseInitialUrl() {
-  const path = location.pathname + location.search;
+  // ハッシュベースルーティングを優先
+  let path = location.hash && location.hash.startsWith('#/') ? location.hash.slice(1) : (location.pathname + location.search);
+  if(!path) path = '/';
   const watchMatch = path.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
   const shortsMatch = path.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
   const searchMatch = path.match(/\/search\?q=(.+)/);
@@ -2828,6 +2919,170 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('nav-setting-autonext');
     if(el) el.checked = c.autoNext !== false;
   }, 100);
+});
+
+
+
+// =================== 検索履歴ドロップダウン ===================
+function showSearchSuggestions(){
+  const box = document.getElementById('search-suggestions');
+  if(!box) return;
+  const inp = document.getElementById('search-input');
+  const filter = (inp.value||'').toLowerCase();
+  const list = getSearchHistory().filter(q => !filter || q.toLowerCase().includes(filter)).slice(0, 10);
+  if(list.length === 0){ box.classList.remove('open'); return; }
+  box.innerHTML = list.map(q => `<div class="search-suggestion-item" onmousedown="event.preventDefault();selectSuggestion('${q.replace(/'/g,"\\'")}')">
+    <svg viewBox="0 0 24 24"><path d="M14.97,16.95L10,13.87V7h2v5.76l4.03,2.49L14.97,16.95z M12,3c-4.96,0-9,4.04-9,9s4.04,9,9,9s9-4.04,9-9S16.96,3,12,3"/></svg>
+    <span>${q}</span>
+    <span class="search-suggestion-remove" onmousedown="event.preventDefault();event.stopPropagation();removeSearchHistory('${q.replace(/'/g,"\\'")}')">×</span>
+  </div>`).join('');
+  box.classList.add('open');
+}
+function hideSearchSuggestions(){ const b=document.getElementById('search-suggestions'); if(b) b.classList.remove('open'); }
+function selectSuggestion(q){
+  document.getElementById('search-input').value = q;
+  hideSearchSuggestions();
+  handleSearch(null, q);
+}
+function removeSearchHistory(q){
+  let sh = getSearchHistory().filter(x => x !== q);
+  localStorage.setItem('search_history', JSON.stringify(sh));
+  showSearchSuggestions();
+  renderCategoryHistoryChips();
+}
+
+// カテゴリーバーに検索履歴を追加表示
+function renderCategoryHistoryChips(){
+  const bar = document.getElementById('categories-bar');
+  if(!bar) return;
+  bar.querySelectorAll('.search-history-chip').forEach(el => el.remove());
+  const list = getSearchHistory().slice(0, 6);
+  list.forEach(q => {
+    const btn = document.createElement('button');
+    btn.className = 'category-chip search-history-chip';
+    btn.innerHTML = `🔍 ${q}`;
+    btn.onclick = () => { document.getElementById('search-input').value = q; handleSearch(null, q); };
+    bar.appendChild(btn);
+  });
+}
+// saveSearchHistoryをラップしてチップを更新
+const _origSaveSearchHistory = saveSearchHistory;
+saveSearchHistory = function(q){ _origSaveSearchHistory(q); renderCategoryHistoryChips(); };
+
+// =================== シアターモード ===================
+function toggleTheaterMode(){
+  const layout = document.querySelector('#view-watch .watch-layout');
+  if(!layout) return;
+  layout.classList.toggle('theater');
+  const lbl = document.getElementById('theater-btn-label');
+  if(lbl) lbl.textContent = layout.classList.contains('theater') ? '通常モード' : 'シアターモード';
+}
+
+// =================== 再生リスト ===================
+function getPlaylists(){ try { return JSON.parse(localStorage.getItem('playlists')||'[]'); } catch(e){ return []; } }
+function savePlaylists(pl){ localStorage.setItem('playlists', JSON.stringify(pl)); }
+function createPlaylist(name){
+  if(!name || !name.trim()) return null;
+  const pl = getPlaylists();
+  const id = 'pl_' + Date.now();
+  pl.unshift({ id, name: name.trim(), videos: [], createdAt: Date.now() });
+  savePlaylists(pl);
+  return id;
+}
+function createPlaylistFromInput(){
+  const inp = document.getElementById('new-playlist-input');
+  if(createPlaylist(inp.value)){ inp.value=''; renderPlaylists(); }
+}
+function addVideoToPlaylist(plId, video){
+  const pl = getPlaylists();
+  const target = pl.find(p => p.id === plId);
+  if(!target) return;
+  if(target.videos.some(v => v.id === video.id)) return;
+  target.videos.unshift(video);
+  savePlaylists(pl);
+}
+function renderPlaylists(){
+  const grid = document.getElementById('playlists-grid');
+  if(!grid) return;
+  const pl = getPlaylists();
+  if(pl.length === 0){ grid.innerHTML = '<div style="color:var(--text-secondary);padding:20px;">再生リストはありません</div>'; return; }
+  grid.innerHTML = pl.map(p => {
+    const cover = p.videos[0] ? `https://i.ytimg.com/vi/${p.videos[0].id}/mqdefault.jpg` : '';
+    return `<div class="playlist-card" onclick="openPlaylist('${p.id}')">
+      <div class="playlist-thumb">${cover ? `<img src="${cover}">` : ''}<span class="playlist-count">${p.videos.length}本</span></div>
+      <div class="playlist-info">
+        <div class="playlist-title">${p.name}</div>
+        <div class="playlist-meta">${p.videos.length}本の動画</div>
+        <button onclick="event.stopPropagation();deletePlaylist('${p.id}')" style="margin-top:8px;background:none;border:1px solid var(--border-color);padding:4px 10px;border-radius:6px;cursor:pointer;color:var(--text-color);font-size:12px;">削除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function deletePlaylist(id){
+  if(!confirm('削除しますか？')) return;
+  savePlaylists(getPlaylists().filter(p => p.id !== id));
+  renderPlaylists();
+}
+function openPlaylist(id){
+  const p = getPlaylists().find(x => x.id === id); if(!p) return;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-playlist-detail').classList.add('active');
+  document.getElementById('playlist-detail-title').textContent = p.name;
+  const grid = document.getElementById('playlist-detail-grid');
+  if(p.videos.length === 0){ grid.innerHTML = '<div style="color:var(--text-secondary);">動画がありません</div>'; return; }
+  grid.innerHTML = p.videos.map(v => `<div class="video-card" onclick="playVideo('${v.id}','${(v.title||'').replace(/'/g,"\\'")}','${(v.channel||'').replace(/'/g,"\\'")}')">
+    <div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy"></div>
+    <div class="video-details" style="padding:10px 0;"><div class="video-title">${v.title||''}</div><div class="video-meta-channel"><span>${v.channel||''}</span></div></div>
+  </div>`).join('');
+}
+function openAddToPlaylist(){
+  if(!currentVideoId) return;
+  const modal = document.getElementById('add-to-playlist-modal');
+  const list = document.getElementById('playlist-options-list');
+  const pl = getPlaylists();
+  list.innerHTML = pl.length === 0 ? '<div style="color:var(--text-secondary);padding:8px;">まだありません。下から作成してください。</div>' :
+    pl.map(p => `<div class="playlist-option" onclick="addCurrentToPlaylist('${p.id}')">
+      <input type="checkbox" ${p.videos.some(v=>v.id===currentVideoId)?'checked':''} style="pointer-events:none;">
+      <span>${p.name}</span><span style="color:var(--text-secondary);font-size:12px;margin-left:auto;">${p.videos.length}本</span>
+    </div>`).join('');
+  modal.classList.add('open');
+}
+function closeAddToPlaylist(){ document.getElementById('add-to-playlist-modal').classList.remove('open'); }
+function addCurrentToPlaylist(plId){
+  if(!currentVideoId) return;
+  addVideoToPlaylist(plId, { id: currentVideoId, title: currentVideoTitle, channel: currentChannelName });
+  openAddToPlaylist();
+}
+function createAndAddToPlaylist(){
+  const inp = document.getElementById('modal-new-playlist');
+  const id = createPlaylist(inp.value);
+  if(id && currentVideoId){ addVideoToPlaylist(id, { id: currentVideoId, title: currentVideoTitle, channel: currentChannelName }); }
+  inp.value = ''; openAddToPlaylist();
+}
+
+// navigate('playlists') サポート
+const _origNavigate2 = navigate;
+navigate = function(viewName, opts){
+  _origNavigate2(viewName, opts);
+  if(viewName === 'playlists') renderPlaylists();
+};
+
+// hashchange対応
+window.addEventListener('hashchange', () => {
+  const init = parseInitialUrl();
+  if(!init) return;
+  if(init.view === 'watch' && init.videoId) playVideo(init.videoId, '', '', null);
+  else if(init.view === 'shorts' && init.videoId) navigateToShortPage(init.videoId, '', '', null, true);
+  else if(init.view === 'search' && init.query){
+    document.getElementById('search-input').value = init.query;
+    navigate('search', { noHistory: true });
+    triggerSearch(init.query, 'search');
+  } else if(init.view){ navigate(init.view, { noHistory: true }); }
+});
+
+// 初期表示時にカテゴリーチップを生成
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(renderCategoryHistoryChips, 200);
 });
 
 </script>
