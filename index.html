@@ -150,8 +150,8 @@ main.sidebar-open { margin-left: 240px; }
 .view { display: none; }
 .view.active { display: block; }
 
-.video-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; row-gap: 40px; }
-@media (max-width: 1100px) { .video-grid { grid-template-columns: repeat(3, 1fr); } }
+.video-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; row-gap: 40px; }
+@media (max-width: 1100px) { .video-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 760px)  { .video-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 480px)  { .video-grid { grid-template-columns: 1fr; } }
 
@@ -164,7 +164,9 @@ main.sidebar-open { margin-left: 240px; }
 .channel-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .video-details { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
 .video-title { font-size: 14px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; margin-bottom: 4px;}
-.video-meta { font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 2px; }
+.video-meta-channel { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.video-meta-channel span:hover { color: var(--text-color); }
+.video-meta { font-size: 12px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .duration-badge {
   position: absolute; bottom: 6px; right: 6px;
   background: rgba(0,0,0,0.82); color: #fff;
@@ -854,6 +856,13 @@ input:checked + .slider:before { transform: translateX(20px); }
           <div class="setting-item">
             <div class="setting-info"><div class="setting-title">ダークモード</div></div>
             <label class="toggle-switch"><input type="checkbox" id="nav-setting-theme" onchange="toggleThemeFromNavSettings()"><span class="slider"></span></label>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">再生</div>
+          <div class="setting-item">
+            <div class="setting-info"><div class="setting-title">自動再生（次の動画へ）</div><div class="setting-desc">動画が終了すると数秒後に次の動画へ切り替わります</div></div>
+            <label class="toggle-switch"><input type="checkbox" id="nav-setting-autonext" onchange="saveNavSettings()"><span class="slider"></span></label>
           </div>
         </div>
         <div class="settings-section">
@@ -1670,7 +1679,7 @@ async function loadRecommendations() {
     const data = await fetchFromInvidious(kw, 'trend', 1);
     if (data) data.filter(v => v.type==='video' && v.videoId).slice(0,4).forEach(v => {
       if (!history.some(h => h.id === v.videoId) && results.length < 8) {
-        results.push({ id: v.videoId, title: v.title, channel: v.author, isShort: v.lengthSeconds > 0 && v.lengthSeconds <= 61, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${v.author}`, duration: v.lengthSeconds||0, published: v.publishedText||'' });
+        results.push({ id: v.videoId, title: v.title, channel: v.author, isShort: v.lengthSeconds > 0 && v.lengthSeconds <= 61, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${v.author}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0 });
       }
     });
   }
@@ -1680,7 +1689,7 @@ async function loadRecommendations() {
     const card = document.createElement('div'); card.className = 'video-card';
     const durStr = formatDuration(v.duration);
     card.onclick = () => playVideo(v.id, v.title, v.channel, v.authorThumb);
-    card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy">${durStr ? `<span class="duration-badge">${durStr}</span>` : ''}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}', '${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta"><span>${v.channel}</span>${v.published ? `<span>${v.published}</span>` : ''}</div></div></div>`;
+    card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${durStr ? `<span class="duration-badge">${durStr}</span>` : ''}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}', '${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta-channel"><span>${v.channel}</span></div><div class="video-meta">${v.viewCount ? `<span>${formatViews(v.viewCount)}</span>` : ''}${v.published ? `<span>・ ${v.published}</span>` : ''}</div></div></div>`;
     grid.appendChild(card);
   });
 }
@@ -1788,7 +1797,7 @@ async function fetchChannelShortsMultiPage(channelName, startPage = 1) {
       } catch(e) {}
     }
   }
-  const shorts = allVideos.filter(v => v.lengthSeconds > 0 && v.lengthSeconds <= 61).map(v => ({ id: v.videoId, title: v.title, channel: v.author || channelName, isShort: true, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||channelName)}`, duration: v.lengthSeconds, published: v.publishedText||'' }));
+  const shorts = allVideos.filter(v => v.lengthSeconds > 0 && v.lengthSeconds <= 61).map(v => ({ id: v.videoId, title: v.title, channel: v.author || channelName, isShort: true, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||channelName)}`, duration: v.lengthSeconds, published: v.publishedText||'', viewCount: v.viewCount||0 }));
   return { shorts, hasMore: allVideos.length >= 20 };
 }
 
@@ -1837,7 +1846,7 @@ async function triggerSearch(query, context, append = false) {
     const result = await fetchChannelVideos(query, currentPage);
     isFetching = false;
     if (result && result.videos && result.videos.length > 0) {
-      let videos = result.videos.map(v => ({ id: v.videoId, title: v.title, channel: v.author || query, isShort: false, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||query)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', isLive: v.liveNow||false, isArchived: !v.liveNow && v.lengthSeconds > 0 && (v.title && (v.title.includes('ライブ')||v.title.includes('配信')||v.title.includes('LIVE'))), publishedTimestamp: v.published||0 }));
+      let videos = result.videos.map(v => ({ id: v.videoId, title: v.title, channel: v.author || query, isShort: false, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||query)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, isLive: v.liveNow||false, isArchived: !v.liveNow && v.lengthSeconds > 0 && (v.title && (v.title.includes('ライブ')||v.title.includes('配信')||v.title.includes('LIVE'))), publishedTimestamp: v.published||0 }));
       renderResults(videos, append);
       if (result.channelInfo && !append) updateChannelHeaderInfo(result.channelInfo);
       return;
@@ -1850,7 +1859,7 @@ async function triggerSearch(query, context, append = false) {
           const authorNorm = (item.author||'').toLowerCase().trim(), queryNorm = query.toLowerCase().trim();
           if (!authorNorm.includes(queryNorm) && !queryNorm.includes(authorNorm)) return;
           seenVideoIds.add(item.videoId);
-          videos.push({ id: item.videoId, title: item.title, channel: item.author||query, isShort: false, isLive: item.liveNow||false, isArchived: !item.liveNow && (item.title && (item.title.includes('ライブ')||item.title.includes('配信')||item.title.includes('LIVE'))), authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(item.author||query)}`, duration: item.lengthSeconds||0, published: item.publishedText||'', publishedTimestamp: item.published||0 });
+          videos.push({ id: item.videoId, title: item.title, channel: item.author||query, isShort: false, isLive: item.liveNow||false, isArchived: !item.liveNow && (item.title && (item.title.includes('ライブ')||item.title.includes('配信')||item.title.includes('LIVE'))), authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(item.author||query)}`, duration: item.lengthSeconds||0, published: item.publishedText||'', viewCount: item.viewCount||0, publishedTimestamp: item.published||0 });
         }
       });
       renderResults(videos, append); return;
@@ -1868,7 +1877,7 @@ async function triggerSearch(query, context, append = false) {
     } else {
       const invData = await fetchFromInvidious(cleanName + ' #shorts', 'shorts', currentPage);
       if (invData && invData.length > 0) {
-        let videos = invData.filter(item => item.type==='video' && item.videoId && item.lengthSeconds > 0 && item.lengthSeconds <= 61).map(item => ({ id: item.videoId, title: item.title, channel: item.author||cleanName, isShort: true, authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(item.author||cleanName)}`, duration: item.lengthSeconds, published: item.publishedText||'' }));
+        let videos = invData.filter(item => item.type==='video' && item.videoId && item.lengthSeconds > 0 && item.lengthSeconds <= 61).map(item => ({ id: item.videoId, title: item.title, channel: item.author||cleanName, isShort: true, authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(item.author||cleanName)}`, duration: item.lengthSeconds, published: item.publishedText||'', viewCount: item.viewCount||0 }));
         renderChannelShorts(videos, append);
       } else {
         document.getElementById('channel-shorts-loader')?.classList.add('hidden');
@@ -1882,14 +1891,14 @@ async function triggerSearch(query, context, append = false) {
     const chName = query.replace(/ ライブ$/, '').trim(); isFetching = false;
     const { videos: liveVideos, channelInfo } = await fetchChannelLiveVideos(chName);
     if (liveVideos && liveVideos.length > 0) {
-      const mapped = liveVideos.map(v => ({ id: v.videoId, title: v.title||'', channel: v.author||chName, isShort: false, isLive: !!(v.liveNow||v.isUpcoming), isUpcoming: !!v.isUpcoming, isArchived: !v.liveNow && !v.isUpcoming, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||chName)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', publishedTimestamp: v.published||0 }));
+      const mapped = liveVideos.map(v => ({ id: v.videoId, title: v.title||'', channel: v.author||chName, isShort: false, isLive: !!(v.liveNow||v.isUpcoming), isUpcoming: !!v.isUpcoming, isArchived: !v.liveNow && !v.isUpcoming, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||chName)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, publishedTimestamp: v.published||0 }));
       renderChannelLive(mapped, append);
       if (channelInfo && !append) updateChannelHeaderInfo(channelInfo);
     } else {
       const result = await fetchChannelVideos(chName, 1);
       if (result && result.videos) {
         const liveFiltered = result.videos.filter(v => v.liveNow || v.isUpcoming || (v.title && v.title.match(/ライブ|配信|LIVE|live|生放送|STREAM/i)));
-        const mapped = (liveFiltered.length > 0 ? liveFiltered : result.videos.slice(0,12)).map(v => ({ id: v.videoId, title: v.title, channel: v.author||chName, isShort: false, isLive: !!(v.liveNow||v.isUpcoming), isUpcoming: !!v.isUpcoming, isArchived: !v.liveNow && !v.isUpcoming && (v.title && !!v.title.match(/ライブ|配信|LIVE|live|生放送/i)), authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||chName)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', publishedTimestamp: v.published||0 }));
+        const mapped = (liveFiltered.length > 0 ? liveFiltered : result.videos.slice(0,12)).map(v => ({ id: v.videoId, title: v.title, channel: v.author||chName, isShort: false, isLive: !!(v.liveNow||v.isUpcoming), isUpcoming: !!v.isUpcoming, isArchived: !v.liveNow && !v.isUpcoming && (v.title && !!v.title.match(/ライブ|配信|LIVE|live|生放送/i)), authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||chName)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, publishedTimestamp: v.published||0 }));
         renderChannelLive(mapped, append);
       } else {
         document.getElementById('channel-live-loader')?.classList.add('hidden');
@@ -1905,7 +1914,7 @@ async function triggerSearch(query, context, append = false) {
       if (item.type === 'video' && item.videoId && !seenVideoIds.has(item.videoId)) {
         if (context === 'shorts' && item.lengthSeconds > 61) return;
         seenVideoIds.add(item.videoId);
-        videos.push({ id: item.videoId, title: item.title, channel: item.author, isShort: item.lengthSeconds > 0 && item.lengthSeconds <= 61, isLive: item.liveNow||false, authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${item.author}`, duration: item.lengthSeconds||0, published: item.publishedText||'' });
+        videos.push({ id: item.videoId, title: item.title, channel: item.author, isShort: item.lengthSeconds > 0 && item.lengthSeconds <= 61, isLive: item.liveNow||false, authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${item.author}`, duration: item.lengthSeconds||0, published: item.publishedText||'', viewCount: item.viewCount||0 });
       }
     });
     renderResults(videos, append);
@@ -2004,7 +2013,7 @@ async function fetchShortsForSearch(query) {
     shorts.forEach(v => {
       const div = document.createElement('div'); div.className = 'home-short-card';
       div.onclick = () => navigateToShortPage(v.videoId, v.title, v.author, v.authorThumbnails?.[0]?.url);
-      div.innerHTML = `<div class="home-short-thumb"><img src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg" loading="lazy"></div><div class="home-short-title">${v.title}</div>`;
+      div.innerHTML = `<div class="home-short-thumb"><img src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg" loading="lazy" decoding="async"></div><div class="home-short-title">${v.title}</div>`;
       container.appendChild(div);
     });
     document.getElementById('search-shorts-section').classList.remove('hidden');
@@ -2264,7 +2273,7 @@ function renderResults(videos, append = false) {
     const isArchived = v.isArchived||false;
     const durStr = formatDuration(v.duration), dateStr = v.publishedTimestamp ? formatTimestamp(v.publishedTimestamp) : '';
     card.onclick = () => playVideo(v.id, v.title, v.channel, v.authorThumb);
-    card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy">${v.isLive ? '<span class="live-thumb-badge">🔴 配信中</span>' : isArchived ? `<span class="archived-badge">📅 配信済み${dateStr ? ' '+dateStr : ''}</span>` : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta"><span style="cursor:pointer;" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')">${v.channel}</span>${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived && dateStr ? `<span>${dateStr} 配信済み</span>` : (v.published ? `<span>${v.published}</span>` : '')}</div></div></div>`;
+    card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${v.isLive ? '<span class="live-thumb-badge">🔴 配信中</span>' : isArchived ? `<span class="archived-badge">📅 配信済み${dateStr ? ' '+dateStr : ''}</span>` : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta-channel"><span style="cursor:pointer;" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')">${v.channel}</span></div><div class="video-meta">${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived && dateStr ? `<span>${dateStr} 配信済み</span>` : `${v.viewCount ? `<span>${formatViews(v.viewCount)}</span>` : ''}${v.published ? `<span>・ ${v.published}</span>` : ''}`}</div></div></div>`;
     container.appendChild(card);
   });
   document.getElementById('home-loader')?.classList.add('hidden');
@@ -2282,7 +2291,7 @@ function renderSearchResults(videos, append = false) {
     const isArchived = v.isArchived||false, durStr = formatDuration(v.duration), dateStr = v.publishedTimestamp ? formatTimestamp(v.publishedTimestamp) : '';
     const channelSafe = v.channel.replace(/'/g,"\\'");
     item.onclick = () => playVideo(v.id, v.title, v.channel, v.authorThumb);
-    item.innerHTML = `<div class="search-result-thumb"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy">${v.isLive ? '<span class="live-thumb-badge">🔴 配信中</span>' : isArchived ? '<span class="archived-badge">📅 配信済み</span>' : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="search-result-info"><div class="search-result-title">${v.title}</div><div class="search-result-meta">${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived && dateStr ? `<span>${dateStr} 配信済み</span>` : (durStr ? `<span>${durStr}</span>` : '')}${!v.isLive && v.published ? `<span>• ${v.published}</span>` : ''}</div><div class="search-result-channel" onclick="event.stopPropagation(); openChannel('${channelSafe}','${v.authorThumb}')"><div class="search-result-channel-icon"><img src="${v.authorThumb}" loading="lazy"></div><span class="search-result-channel-name">${v.channel}</span></div></div>`;
+    item.innerHTML = `<div class="search-result-thumb"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${v.isLive ? '<span class="live-thumb-badge">🔴 配信中</span>' : isArchived ? '<span class="archived-badge">📅 配信済み</span>' : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="search-result-info"><div class="search-result-title">${v.title}</div><div class="search-result-meta">${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived && dateStr ? `<span>${dateStr} 配信済み</span>` : (durStr ? `<span>${durStr}</span>` : '')}${!v.isLive && v.published ? `<span>• ${v.published}</span>` : ''}</div><div class="search-result-channel" onclick="event.stopPropagation(); openChannel('${channelSafe}','${v.authorThumb}')"><div class="search-result-channel-icon"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><span class="search-result-channel-name">${v.channel}</span></div></div>`;
     container.appendChild(item);
   });
   document.getElementById('search-loader')?.classList.add('hidden');
@@ -2302,7 +2311,7 @@ function renderChannelShorts(videos, append = false) {
     if (seen.has(v.id)) return; seen.add(v.id);
     const card = document.createElement('div'); card.className = 'channel-short-card'; card.dataset.vid = v.id;
     card.onclick = () => navigateToShortPage(v.id, v.title, v.channel, v.authorThumb);
-    card.innerHTML = `<div class="channel-short-thumb"><img src="https://i.ytimg.com/vi/${v.id}/hqdefault.jpg" loading="lazy">${v.duration > 0 ? `<span class="duration-badge">${formatDuration(v.duration)}</span>` : ''}</div><div class="channel-short-title">${v.title}</div>`;
+    card.innerHTML = `<div class="channel-short-thumb"><img src="https://i.ytimg.com/vi/${v.id}/hqdefault.jpg" loading="lazy" decoding="async">${v.duration > 0 ? `<span class="duration-badge">${formatDuration(v.duration)}</span>` : ''}</div><div class="channel-short-title">${v.title}</div>`;
     grid.appendChild(card);
   });
   document.getElementById('channel-shorts-loader')?.classList.add('hidden');
@@ -2496,14 +2505,14 @@ async function switchStream(type) {
   const wrapper = document.getElementById('player-wrapper');
   if (type === 1) {
     wrapper.innerHTML = '<iframe id="yt-player" allow="autoplay; fullscreen" allowfullscreen></iframe>';
-    await new Promise(r => setTimeout(r, 80));
+    await new Promise(r => setTimeout(r, 0));
     const iframe = document.getElementById('yt-player');
     if (iframe) iframe.src = `https://www.youtube-nocookie.com/embed/${currentVideoId}?autoplay=1&rel=0&start=0`;
   } else if (type === 2) {
     wrapper.innerHTML = '<iframe id="yt-player" allow="autoplay; fullscreen" allowfullscreen></iframe>';
     const key = await fetchKahootKey();
     if(key) {
-      await new Promise(r => setTimeout(r, 80));
+      await new Promise(r => setTimeout(r, 0));
       const iframe = document.getElementById('yt-player');
       if (iframe) iframe.src = buildEduUrl(currentVideoId, key);
     } else { alert("Edu準備中"); switchStream(1); }
@@ -2704,6 +2713,123 @@ function toggleSubscribeFromShort(channelName, thumb, btn) {
   else { subs.unshift({ name: channelName, thumb, isLive: false }); btn.textContent='登録済み'; btn.classList.add('subscribed'); }
   saveSubscriptions(subs); renderSidebarSubscriptions();
 }
+
+// =================== 追加機能: 視聴回数 / 自動次再生 ===================
+function formatViews(n){
+  n = parseInt(n)||0;
+  if(!n) return '';
+  if(n >= 100000000) return (n/100000000).toFixed(1).replace(/\.0$/,'') + '億回視聴';
+  if(n >= 10000) return (n/10000).toFixed(1).replace(/\.0$/,'') + '万回視聴';
+  if(n >= 1000) return (n/1000).toFixed(1).replace(/\.0$/,'') + '千回視聴';
+  return n.toLocaleString() + '回視聴';
+}
+
+// getAppConfig 既定値に autoNext を追加（既存設定とマージ）
+const _origGetAppConfig = getAppConfig;
+getAppConfig = function(){ const c = _origGetAppConfig(); if(c.autoNext===undefined) c.autoNext = true; return c; };
+
+const _origSaveNavSettings = saveNavSettings;
+saveNavSettings = function(){
+  _origSaveNavSettings();
+  const el = document.getElementById('nav-setting-autonext');
+  if(!el) return;
+  try{
+    const c = JSON.parse(localStorage.getItem('study2525_config'))||{};
+    c.autoNext = el.checked;
+    localStorage.setItem('study2525_config', JSON.stringify(c));
+  }catch(e){}
+};
+
+const _origSyncSettings = syncSettings;
+syncSettings = function(config){
+  _origSyncSettings(config);
+  const el = document.getElementById('nav-setting-autonext');
+  if(el) el.checked = config.autoNext !== false;
+};
+
+// 関連動画キュー（次に再生する動画）
+let _nextVideoQueue = [];
+const _origRenderRelatedVideos = renderRelatedVideos;
+renderRelatedVideos = function(videos, append=false){
+  _origRenderRelatedVideos(videos, append);
+  if(!append) _nextVideoQueue = [];
+  videos.forEach(v => { if(v.id && v.id !== currentVideoId) _nextVideoQueue.push(v); });
+  startEndedWatcher();
+};
+
+let _autoNextTimer = null;
+let _ytApiReady = false;
+let _ytPlayer = null;
+
+// YouTube IFrame API ロード
+(function loadYTApi(){
+  if(window.YT) { _ytApiReady = true; return; }
+  const t = document.createElement('script');
+  t.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(t);
+  window.onYouTubeIframeAPIReady = function(){ _ytApiReady = true; };
+})();
+
+function playNextVideo(){
+  if(!getAppConfig().autoNext) return;
+  const next = _nextVideoQueue.shift();
+  if(!next) return;
+  playVideo(next.id, next.title, next.channel, next.authorThumb);
+}
+
+function scheduleNext(){
+  if(_autoNextTimer) clearTimeout(_autoNextTimer);
+  if(!getAppConfig().autoNext) return;
+  _autoNextTimer = setTimeout(playNextVideo, 5000);
+}
+
+function startEndedWatcher(){
+  // HTML5 video (Manifest stream)
+  const wrap = document.getElementById('player-wrapper');
+  if(!wrap) return;
+  const v = wrap.querySelector('video');
+  if(v && !v.dataset.endedHooked){
+    v.dataset.endedHooked = '1';
+    v.addEventListener('ended', () => scheduleNext());
+  }
+  // YouTube iframe via IFrame API
+  const iframe = document.getElementById('yt-player');
+  if(iframe && _ytApiReady && !iframe.dataset.ytHooked){
+    // iframeのsrcに enablejsapi=1 を付加
+    if(iframe.src && iframe.src.indexOf('enablejsapi') === -1){
+      const sep = iframe.src.indexOf('?') >= 0 ? '&' : '?';
+      iframe.src = iframe.src + sep + 'enablejsapi=1';
+    }
+    iframe.dataset.ytHooked = '1';
+    try{
+      if(_ytPlayer && _ytPlayer.destroy) { try{ _ytPlayer.destroy(); }catch(e){} }
+      _ytPlayer = new YT.Player(iframe, {
+        events: {
+          onStateChange: (e) => { if(e.data === YT.PlayerState.ENDED) scheduleNext(); }
+        }
+      });
+    }catch(e){}
+  }
+}
+
+// playVideo の後にウォッチャを起動
+const _origPlayVideo = playVideo;
+playVideo = async function(...args){
+  if(_autoNextTimer){ clearTimeout(_autoNextTimer); _autoNextTimer = null; }
+  await _origPlayVideo.apply(this, args);
+  // プレイヤーが組み立てられるのを待つ
+  setTimeout(startEndedWatcher, 800);
+  setTimeout(startEndedWatcher, 2000);
+};
+
+// 初期化時に設定をUIに反映
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const c = getAppConfig();
+    const el = document.getElementById('nav-setting-autonext');
+    if(el) el.checked = c.autoNext !== false;
+  }, 100);
+});
+
 </script>
 
 <script async src="https://cse.google.com/cse.js?cx=c04ec9d20c4264b0d"></script>
