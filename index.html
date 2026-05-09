@@ -205,6 +205,17 @@ main.sidebar-open { margin-left: 240px; }
 .search-shorts-title svg { fill: #ff0000; stroke: none; width: 22px; height: 22px; }
 .search-shorts-scroll { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
 .search-shorts-scroll::-webkit-scrollbar { display: none; }
+.search-channels-section { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 12px; }
+.search-channel-card { display: flex; align-items: center; gap: 16px; padding: 12px; border-radius: 12px; cursor: pointer; }
+.search-channel-card:hover { background: var(--hover-color); }
+.search-channel-card-icon { width: 96px; height: 96px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: var(--hover-color); }
+.search-channel-card-icon img { width: 100%; height: 100%; object-fit: cover; }
+.search-channel-card-info { flex: 1; min-width: 0; }
+.search-channel-card-name { font-size: 18px; font-weight: 600; }
+.search-channel-card-handle { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.search-channel-card-meta { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.search-channel-card-desc { font-size: 13px; color: var(--text-secondary); margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 600px) { .search-channel-card-icon { width: 64px; height: 64px; } .search-channel-card-name { font-size: 15px; } }
 
 .home-shorts-section { margin-bottom: 40px; border-bottom: 4px solid var(--border-color); padding-bottom: 20px; }
 .home-shorts-title { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: bold; margin-bottom: 16px; }
@@ -220,13 +231,16 @@ main.sidebar-open { margin-left: 240px; }
 .channel-banner-wrap { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 0; background: #000; }
 .channel-banner-img { width: 100%; height: 180px; object-fit: cover; display: block; }
 .channel-banner-placeholder { width: 100%; height: 180px; display: block; }
-.channel-header-row { display: flex; align-items: flex-start; gap: 24px; padding: 16px 0 16px 0; }
+.channel-header-row { display: flex; align-items: flex-start; gap: 28px; padding: 20px 0 16px 0; max-width: 1100px; margin: 0 auto; justify-content: center; }
 .channel-header-icon-wrap { position: relative; flex-shrink: 0; }
-.channel-header-icon { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; background: var(--hover-color); }
-.channel-header-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.channel-header-title { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.channel-header-icon { width: 128px; height: 128px; border-radius: 50%; object-fit: cover; background: var(--hover-color); }
+.channel-header-info { flex: 1; display: flex; flex-direction: column; gap: 4px; max-width: 720px; }
+.channel-header-title { font-size: 28px; font-weight: 700; line-height: 1.2; }
 .channel-header-handle { font-size: 14px; color: var(--text-secondary); margin-top: 2px; }
 .channel-header-meta { font-size: 13px; color: var(--text-secondary); }
+.channel-header-desc { font-size: 13px; color: var(--text-secondary); margin-top: 6px; line-height: 1.5; max-height: 3em; overflow: hidden; cursor: pointer; white-space: pre-wrap; }
+.channel-header-desc.expanded { max-height: none; }
+.channel-header-desc:empty { display: none; }
 .channel-action-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .subscribe-btn {
   background-color: var(--text-color); color: var(--bg-color);
@@ -241,8 +255,9 @@ main.sidebar-open { margin-left: 240px; }
 .channel-join-btn:hover { background: var(--hover-color); }
 .channel-tabs-bar {
   display: flex; gap: 0; border-bottom: 1px solid var(--border-color);
-  margin-bottom: 24px; padding: 0; overflow-x: auto; scrollbar-width: none;
+  margin: 0 auto 24px auto; padding: 0; overflow-x: auto; scrollbar-width: none;
   position: sticky; top: 56px; background: var(--bg-color); z-index: 10;
+  max-width: 1100px; justify-content: center;
 }
 .channel-tabs-bar::-webkit-scrollbar { display: none; }
 .channel-tab {
@@ -458,7 +473,8 @@ input:checked + .slider:before { transform: translateX(20px); }
   .shorts-full-page { left: 0; }
   .channel-featured-video { flex-direction: column; }
   .channel-featured-thumb { width: 100%; }
-  .channel-header-icon { width: 64px; height: 64px; }
+  .channel-header-icon { width: 96px; height: 96px; }
+  .channel-header-row { gap: 16px; padding: 12px; }
   .channel-header-title { font-size: 18px; }
   .channel-banner-img, .channel-banner-placeholder { height: 100px; }
 }
@@ -722,6 +738,7 @@ input:checked + .slider:before { transform: translateX(20px); }
       </div>
       <div class="search-shorts-scroll" id="search-shorts-container"></div>
     </div>
+    <div id="search-channels-section" class="search-channels-section hidden"></div>
     <div id="search-results-list" class="search-results-list"></div>
     <div id="search-loader" class="loader hidden">さらに読み込み中...</div>
   </div>
@@ -758,6 +775,7 @@ input:checked + .slider:before { transform: translateX(20px); }
         <div class="channel-header-title" id="channel-page-name">チャンネル名</div>
         <div class="channel-header-handle" id="channel-page-handle">@channel</div>
         <div class="channel-header-meta" id="channel-page-meta">登録者数 -- • 動画 --件</div>
+        <div class="channel-header-desc" id="channel-page-desc" onclick="this.classList.toggle('expanded')"></div>
         <div class="channel-action-row">
           <button class="subscribe-btn" id="channel-subscribe-btn" onclick="toggleSubscribeChannel()">チャンネル登録</button>
           <button class="channel-bell-btn" id="channel-bell-btn" style="display:none;">
@@ -862,7 +880,7 @@ input:checked + .slider:before { transform: translateX(20px); }
           <span id="desc-toggle-text">続きを読む</span>
         </div>
         <div class="comments-section">
-          <div style="font-weight:bold; margin-bottom:12px;"><span id="comment-count">0</span> 件のコメント</div>
+          <div style="font-weight:bold; margin-bottom:12px; display:flex; align-items:center; gap:12px;"><span><span id="comment-count">0</span> 件のコメント</span><button onclick="fetchComments(currentVideoId)" style="margin-left:auto;padding:6px 14px;border-radius:18px;border:1px solid var(--border-color);background:var(--chip-bg);color:var(--text-color);cursor:pointer;font-size:13px;">コメントを読み込む</button></div>
           <div id="comments-container"></div>
         </div>
       </div>
@@ -1802,23 +1820,47 @@ async function fetchFromInvidious(query, context, page = 1) {
 }
 
 async function fetchChannelInfoFromInvidious(channelName) {
+  let foundChannel = null;
+  // Step1: identify channel via search across instances
   for (let instance of INVIDIOUS_INSTANCES) {
     try {
       const searchUrl = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(channelName)}&type=channel&page=1`);
-      const sRes = await fetch(searchUrl, { signal: AbortSignal.timeout(8000) });
+      const sRes = await fetch(searchUrl, { signal: AbortSignal.timeout(7000) });
       if (!sRes.ok) continue;
       const sData = await sRes.json();
       const channel = sData.find(c => c.type === 'channel');
-      if (!channel || !channel.authorId) continue;
-      const detailUrl = buildFetchUrl(`${instance}/api/v1/channels/${channel.authorId}`);
-      try {
-        const dRes = await fetch(detailUrl, { signal: AbortSignal.timeout(8000) });
-        if (dRes.ok) { const detail = await dRes.json(); return { ...channel, ...detail, authorId: channel.authorId }; }
-      } catch(e) {}
-      return channel;
+      if (channel && channel.authorId) { foundChannel = channel; break; }
     } catch(e) {}
   }
-  return null;
+  if (!foundChannel) return null;
+  // Step2: fetch detailed info (banner/description) — try ALL instances until one returns banners
+  let bestDetail = null;
+  for (let instance of INVIDIOUS_INSTANCES) {
+    try {
+      const detailUrl = buildFetchUrl(`${instance}/api/v1/channels/${foundChannel.authorId}`);
+      const dRes = await fetch(detailUrl, { signal: AbortSignal.timeout(7000) });
+      if (!dRes.ok) continue;
+      const detail = await dRes.json();
+      if (!bestDetail) bestDetail = detail;
+      if (detail.authorBanners && detail.authorBanners.length > 0) { bestDetail = detail; break; }
+    } catch(e) {}
+  }
+  return { ...foundChannel, ...(bestDetail||{}), authorId: foundChannel.authorId };
+}
+
+// Search channels by query (returns multiple channel objects)
+async function searchChannelsFromInvidious(query, limit = 3) {
+  for (let instance of INVIDIOUS_INSTANCES) {
+    try {
+      const url = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=channel&page=1`);
+      const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
+      if (!r.ok) continue;
+      const data = await r.json();
+      const channels = (data || []).filter(c => c.type === 'channel').slice(0, limit);
+      if (channels.length > 0) return channels;
+    } catch(e) {}
+  }
+  return [];
 }
 
 async function fetchChannelLiveVideos(channelName) {
@@ -2012,7 +2054,7 @@ async function triggerSearch(query, context, append = false) {
       }
     });
     renderResults(videos, append);
-    if (context === 'search' && !append) fetchShortsForSearch(query);
+    if (context === 'search' && !append) { fetchShortsForSearch(query); searchChannelsFromInvidious(query, 3).then(renderSearchChannels); }
     if (context === 'trend' && !append) { fetchShortsForHome(); loadRecommendations(); }
     return;
   }
@@ -2041,10 +2083,12 @@ async function loadMoreChannelShorts() {
 
 function updateChannelHeaderInfo(channelInfo) {
   if (!channelInfo) return;
-  const nameEl = document.getElementById('channel-page-name'), handleEl = document.getElementById('channel-page-handle'), metaEl = document.getElementById('channel-page-meta'), iconEl = document.getElementById('channel-page-icon');
+  const nameEl = document.getElementById('channel-page-name'), handleEl = document.getElementById('channel-page-handle'), metaEl = document.getElementById('channel-page-meta'), iconEl = document.getElementById('channel-page-icon'), descEl = document.getElementById('channel-page-desc');
   if (channelInfo.author) nameEl.innerText = channelInfo.author;
   if (channelInfo.authorId) { handleEl.innerText = `@${channelInfo.authorId}`; currentChannelId = channelInfo.authorId; try { history.replaceState({ view: 'channel', channelId: channelInfo.authorId }, '', `#/channel/${channelInfo.authorId}`); } catch(e) {} }
   if (channelInfo.subCount) metaEl.innerText = `登録者数 ${formatSubCount(channelInfo.subCount)} • 動画 ${channelInfo.videoCount||'--'}件`;
+  else if (channelInfo.videoCount) metaEl.innerText = `動画 ${channelInfo.videoCount}件`;
+  if (descEl && channelInfo.description) descEl.innerText = channelInfo.description;
   if (channelInfo.authorThumbnails && channelInfo.authorThumbnails.length > 0) iconEl.src = channelInfo.authorThumbnails[channelInfo.authorThumbnails.length-1].url;
   if (channelInfo.authorBanners && channelInfo.authorBanners.length > 0) {
     const bestBanner = channelInfo.authorBanners.reduce((best, b) => (!best || (b.width || 0) > (best.width || 0)) ? b : best, null);
@@ -2392,6 +2436,30 @@ function renderSearchResults(videos, append = false) {
   });
   document.getElementById('search-loader')?.classList.add('hidden');
 }
+
+function renderSearchChannels(channels) {
+  const sec = document.getElementById('search-channels-section');
+  if (!sec) return;
+  if (!channels || channels.length === 0) { sec.classList.add('hidden'); sec.innerHTML = ''; return; }
+  sec.classList.remove('hidden');
+  sec.innerHTML = channels.map(c => {
+    const name = (c.author||'').replace(/'/g,"\\'");
+    const thumb = c.authorThumbnails && c.authorThumbnails.length > 0 ? c.authorThumbnails[c.authorThumbnails.length-1].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(c.author||'')}`;
+    const subs = c.subCount ? `登録者数 ${formatSubCount(c.subCount)}` : '';
+    const vids = c.videoCount ? `動画 ${c.videoCount}件` : '';
+    const meta = [subs, vids].filter(Boolean).join(' • ');
+    const desc = (c.description||'').replace(/</g,'&lt;');
+    return `<div class="search-channel-card" onclick="openChannel('${name}','${thumb}')">
+      <div class="search-channel-card-icon"><img src="${thumb}" loading="lazy" onerror="this.src='https://i.pravatar.cc/150?u=${encodeURIComponent(c.author||'')}'"></div>
+      <div class="search-channel-card-info">
+        <div class="search-channel-card-name">${c.author||''}</div>
+        <div class="search-channel-card-handle">@${c.authorId||''}</div>
+        ${meta ? `<div class="search-channel-card-meta">${meta}</div>` : ''}
+        ${desc ? `<div class="search-channel-card-desc">${desc}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
 function renderChannelFeatured(v) {
   const el = document.getElementById('channel-featured-video');
   if (!el || !v) return;
@@ -2468,7 +2536,7 @@ function handleCategorySearch(cat, btn) {
   navigate('search');
   document.getElementById('search-shorts-section').classList.add('hidden');
   document.getElementById('search-shorts-container').innerHTML = '';
-  document.getElementById('search-results-list').innerHTML = '';
+  document.getElementById('search-results-list').innerHTML = ''; const _sc=document.getElementById('search-channels-section'); if(_sc){_sc.innerHTML='';_sc.classList.add('hidden');}
   triggerSearch(query,'search');
   if (cat !== 'すべて') fetchShortsForSearch(query);
 }
@@ -2480,7 +2548,7 @@ function handleSearch(e, externalQuery = null) {
   lastQuery = q;
   document.getElementById('search-shorts-section').classList.add('hidden');
   document.getElementById('search-shorts-container').innerHTML = '';
-  document.getElementById('search-results-list').innerHTML = '';
+  document.getElementById('search-results-list').innerHTML = ''; const _sc=document.getElementById('search-channels-section'); if(_sc){_sc.innerHTML='';_sc.classList.add('hidden');}
   try { history.pushState({ view: 'search', query: q }, '', `#/search?q=${encodeURIComponent(q)}`); } catch(e) {}
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-search')?.classList.add('active');
@@ -2520,6 +2588,9 @@ function openChannel(channelName, thumb = null) {
       try { history.replaceState({ view: 'channel', channelId: info.authorId, channelName }, '', `#/channel/${info.authorId}`); } catch(e) {}
     }
     if (info.subCount) document.getElementById('channel-page-meta').innerText = `登録者数 ${formatSubCount(info.subCount)} • 動画 ${info.videoCount||'--'}件`;
+    else if (info.videoCount) document.getElementById('channel-page-meta').innerText = `動画 ${info.videoCount}件`;
+    const descEl = document.getElementById('channel-page-desc');
+    if (descEl) descEl.innerText = info.description || '';
     if (info.authorThumbnails && info.authorThumbnails.length > 0) {
       const bestThumb = info.authorThumbnails[info.authorThumbnails.length-1];
       if (bestThumb) iconEl.src = bestThumb.url;
