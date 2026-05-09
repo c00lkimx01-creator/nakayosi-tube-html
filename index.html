@@ -112,7 +112,8 @@ header {
   stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
 }
 .sidebar-item.active svg { fill: currentColor; stroke: none; }
-.logo svg, .icon-btn svg, .header-right svg { fill: var(--primary-color) !important; stroke: none !important; }
+.logo svg { fill: var(--primary-color) !important; stroke: none !important; }
+.header-left .icon-btn svg, .header-right .icon-btn svg { fill: currentColor !important; stroke: none !important; }
 .sidebar-item .label { font-size: 10px; line-height: 1; }
 .sidebar.open .sidebar-item .label { font-size: 14px; }
 .sidebar-divider { height: 1px; background-color: var(--border-color); margin: 8px 0; display: none; }
@@ -228,36 +229,49 @@ main.sidebar-open { margin-left: 240px; }
 .home-short-card:hover .home-short-thumb img { transform: scale(1.04); }
 .home-short-title { font-size: 13px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-.channel-banner-wrap { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 0; background: #000; }
-.channel-banner-img { width: 100%; height: 180px; object-fit: cover; display: block; }
-.channel-banner-placeholder { width: 100%; height: 180px; display: block; }
-.channel-header-row { display: flex; align-items: flex-start; gap: 28px; padding: 20px 0 16px 0; max-width: 1100px; margin: 0 auto; justify-content: center; }
+.channel-banner-wrap { width: 100%; max-width: 1600px; border-radius: 16px; overflow: hidden; margin: 0 0 16px 0; background: #000; }
+.channel-banner-img { width: 100%; height: 200px; object-fit: cover; display: block; }
+.channel-banner-placeholder { width: 100%; height: 200px; display: block; }
+
+/* チャンネル内の動画グリッドは常に4列 */
+#view-channel .video-grid { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1280px) { #view-channel .video-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px)  { #view-channel .video-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px)  { #view-channel .video-grid { grid-template-columns: 1fr; } }
+.channel-header-row { display: flex; align-items: flex-start; gap: 24px; padding: 12px 0 16px 0; max-width: none; margin: 0; justify-content: flex-start; }
 .channel-header-icon-wrap { position: relative; flex-shrink: 0; }
-.channel-header-icon { width: 128px; height: 128px; border-radius: 50%; object-fit: cover; background: var(--hover-color); }
+.channel-header-icon { width: 112px; height: 112px; border-radius: 50%; object-fit: cover; background: var(--hover-color); }
 .channel-header-info { flex: 1; display: flex; flex-direction: column; gap: 4px; max-width: 720px; }
-.channel-header-title { font-size: 28px; font-weight: 700; line-height: 1.2; }
+.channel-header-title { font-size: 26px; font-weight: 700; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; word-break: break-all; }
 .channel-header-handle { font-size: 14px; color: var(--text-secondary); margin-top: 2px; }
 .channel-header-meta { font-size: 13px; color: var(--text-secondary); }
 .channel-header-desc { font-size: 13px; color: var(--text-secondary); margin-top: 6px; line-height: 1.5; max-height: 3em; overflow: hidden; cursor: pointer; white-space: pre-wrap; }
 .channel-header-desc.expanded { max-height: none; }
 .channel-header-desc:empty { display: none; }
 .channel-action-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-.subscribe-btn {
-  background-color: var(--text-color); color: var(--bg-color);
-  padding: 10px 16px; border-radius: 20px; font-weight: 500; font-size: 14px;
-  transition: opacity 0.2s; cursor: pointer;
-}
-.subscribe-btn:hover { opacity: 0.85; }
-.subscribe-btn.subscribed { background-color: var(--hover-color); color: var(--text-color); border: 1px solid var(--border-color); }
+.subscribe-btn { background: var(--text-color); color: var(--bg-color); border: none; padding: 10px 16px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.subscribe-btn.subscribed { background: var(--hover-color); color: var(--text-color); }
 .channel-bell-btn { width: 40px; height: 40px; border-radius: 50%; background: var(--hover-color); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .channel-bell-btn svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
 .channel-join-btn { background: none; border: 1px solid var(--border-color); padding: 10px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; color: var(--text-color); cursor: pointer; }
 .channel-join-btn:hover { background: var(--hover-color); }
+
+/* Channel internal search — タブバー内にインライン配置 */
+.channel-search-row { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 0 12px; padding: 6px 10px; border: none; background: transparent; align-self: center; }
+.channel-search-row input { width: 160px; border: none; outline: none; background: transparent; color: var(--text-color); font-size: 14px; padding: 0; transition: width 0.2s; }
+.channel-search-row input:focus { width: 220px; }
+.channel-search-row input::placeholder { color: var(--text-secondary); }
+.channel-search-row svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
+.channel-search-row button { display: flex; align-items: center; justify-content: center; padding: 0; background: transparent; cursor: pointer; }
+.channel-search-row button:hover { opacity: 0.8; }
+
+/* Tabs bar — full edge-to-edge underline */
 .channel-tabs-bar {
   display: flex; gap: 0; border-bottom: 1px solid var(--border-color);
-  margin: 0 auto 24px auto; padding: 0; overflow-x: auto; scrollbar-width: none;
+  margin: 0 -24px 24px -24px; padding: 0 24px;
+  overflow-x: auto; scrollbar-width: none;
   position: sticky; top: 56px; background: var(--bg-color); z-index: 10;
-  max-width: 1100px; justify-content: center;
+  max-width: none; justify-content: flex-start;
 }
 .channel-tabs-bar::-webkit-scrollbar { display: none; }
 .channel-tab {
@@ -268,6 +282,27 @@ main.sidebar-open { margin-left: 240px; }
 }
 .channel-tab:hover { color: var(--text-color); background: var(--hover-color); }
 .channel-tab.active { color: var(--text-color); border-bottom: 3px solid var(--text-color); font-weight: 600; }
+
+/* Channel home rows (horizontal scroll) */
+.channel-row { margin-bottom: 32px; }
+.channel-row-title { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+.channel-row-scroll { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding-bottom: 8px; }
+.channel-row-scroll::-webkit-scrollbar { display: none; }
+.video-card-h { flex: 0 0 260px; cursor: pointer; }
+.video-card-h .vh-thumb { width: 100%; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; background: #000; margin-bottom: 8px; position: relative; }
+.video-card-h .vh-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.video-card-h .vh-title { font-size: 14px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.video-card-h .vh-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.channel-row-scroll .home-short-card { flex: 0 0 160px; }
+
+/* Collaboration grid */
+.channel-collab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
+.channel-collab-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; border-radius: 12px; cursor: pointer; }
+.channel-collab-card:hover { background: var(--hover-color); }
+.channel-collab-card img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: var(--hover-color); }
+.channel-collab-name { font-size: 13px; font-weight: 500; text-align: center; }
+.channel-collab-empty { padding: 24px; color: var(--text-secondary); }
+
 .channel-featured { display: flex; flex-direction: column; gap: 24px; }
 .channel-featured-video { display: flex; gap: 16px; padding: 16px; background: var(--hover-color); border-radius: 12px; cursor: pointer; }
 .channel-featured-thumb { width: 280px; flex-shrink: 0; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; }
@@ -790,11 +825,30 @@ input:checked + .slider:before { transform: translateX(20px); }
       <button class="channel-tab" id="ch-tab-shorts" onclick="switchChannelTab('shorts')">ショート</button>
       <button class="channel-tab" id="ch-tab-videos" onclick="switchChannelTab('videos')">動画</button>
       <button class="channel-tab" id="ch-tab-live" onclick="switchChannelTab('live')">ライブ</button>
+      <button class="channel-tab" id="ch-tab-playlists" onclick="switchChannelTab('playlists')">再生リスト</button>
+      <button class="channel-tab" id="ch-tab-collabs" onclick="switchChannelTab('collabs')">コラボレーション</button>
+      <div class="channel-search-row">
+        <button onclick="searchInChannel()" title="検索" aria-label="検索">
+          <svg viewBox="0 0 24 24"><path d="M20.87,20.17l-5.59-5.59C16.35,13.35,17,11.75,17,10c0-3.87-3.13-7-7-7s-7,3.13-7,7s3.13,7,7,7c1.75,0,3.35-0.65,4.58-1.71 l5.59,5.59L20.87,20.17z M10,16c-3.31,0-6-2.69-6-6s2.69-6,6-6s6,2.69,6,6S13.31,16,10,16z"></path></svg>
+        </button>
+        <input type="text" id="channel-search-input" placeholder="検索"
+          onkeydown="if(event.key==='Enter') searchInChannel()">
+      </div>
     </div>
     <div id="channel-tab-home" class="channel-featured">
       <div id="channel-featured-video" style="margin-bottom:16px;"></div>
-      <h3 style="margin-bottom:12px;">最新動画</h3>
-      <div id="channel-home-grid" class="video-grid"></div>
+      <div class="channel-row">
+        <div class="channel-row-title">ホームの動画</div>
+        <div id="channel-home-row" class="channel-row-scroll"></div>
+      </div>
+      <div class="channel-row">
+        <div class="channel-row-title">ショート</div>
+        <div id="channel-home-shorts-row" class="channel-row-scroll"></div>
+      </div>
+      <div class="channel-row">
+        <div class="channel-row-title">最新動画</div>
+        <div id="channel-home-grid" class="video-grid"></div>
+      </div>
     </div>
     <div id="channel-tab-shorts" style="display:none;">
       <div id="channel-shorts-grid" class="channel-shorts-grid"></div>
@@ -813,6 +867,14 @@ input:checked + .slider:before { transform: translateX(20px); }
     <div id="channel-tab-live" style="display:none;">
       <div id="channel-live-grid" class="video-grid"></div>
       <div id="channel-live-loader" class="loader">読み込み中...</div>
+    </div>
+    <div id="channel-tab-playlists" style="display:none;">
+      <div id="channel-playlists-list"></div>
+      <div id="channel-playlists-loader" class="loader hidden">読み込み中...</div>
+    </div>
+    <div id="channel-tab-collabs" style="display:none;">
+      <div id="channel-collabs-grid" class="channel-collab-grid"></div>
+      <div id="channel-collabs-loader" class="loader">読み込み中...</div>
     </div>
   </div>
 
@@ -909,8 +971,15 @@ input:checked + .slider:before { transform: translateX(20px); }
   </div>
   <!-- 履歴 -->
   <div id="view-history" class="view">
-    <h2 style="margin-bottom:20px;">視聴履歴</h2>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:12px; flex-wrap:wrap;">
+      <h2 style="margin:0;">視聴履歴</h2>
+      <button onclick="clearWatchHistory()" style="display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:20px; background:var(--chip-bg); color:var(--text-color); border:1px solid var(--border-color); font-size:14px; cursor:pointer;">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        履歴を消去
+      </button>
+    </div>
     <div id="history-grid" class="video-grid"></div>
+    <div id="history-empty" style="display:none; padding:40px; color:var(--text-secondary); text-align:center;">視聴履歴はまだありません</div>
   </div>
 
   <!-- 設定 -->
@@ -1251,54 +1320,70 @@ const STREAM_PROXIES = [
   'https://corsproxy.io/?'
 ];
 
-async function fetchStreamSource(apiBase) {
-  for (const proxy of STREAM_PROXIES) {
-    try {
-      const targetUrl = proxy ? proxy + encodeURIComponent(apiBase) : apiBase;
-      const res = await fetch(targetUrl, { signal: AbortSignal.timeout(12000) });
-      if (!res.ok) continue;
-      const data = await res.json();
-      const manifestResults = deepSearch(data);
-      if (manifestResults.length > 0) {
-        const unique = Array.from(new Map(manifestResults.map(s => [s.url, s])).values());
-        const sorted = unique.sort((a, b) => (parseInt(b.qualityLabel) || 0) - (parseInt(a.qualityLabel) || 0));
-        return { type: 'manifest', streams: sorted };
-      }
-      if (data.formats && data.formats.length > 0) {
-        const validFormats = data.formats.filter(f => f.url);
-        if (validFormats.length > 0) return { type: 'formats', streams: validFormats };
-      }
-      // simple-yt-stream形式: { videoUrl, audioUrl } など
-      if (data.videoUrl || data.video_url) {
-        const v = data.videoUrl || data.video_url;
-        const a = data.audioUrl || data.audio_url;
-        const streams = [{ url: v, ext: 'mp4', vcodec: 'avc1', acodec: a ? 'none' : 'mp4a.40.2', height: data.height || 360 }];
-        if (a) streams.push({ url: a, ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2' });
-        return { type: 'formats', streams };
-      }
-      if (data.url) return { type: 'single', streams: [{ url: data.url, ext: 'mp4', height: 360 }] };
-      // streams配列
-      if (Array.isArray(data.streams) && data.streams.length > 0) {
-        const valid = data.streams.filter(s => s.url);
-        if (valid.length > 0) return { type: 'formats', streams: valid };
-      }
-    } catch(e) {
-      console.warn('[StreamHunter] failed:', apiBase, proxy || 'direct', e.message);
-    }
+async function tryParseStream(res) {
+  if (!res.ok) return null;
+  const data = await res.json();
+  const manifestResults = deepSearch(data);
+  if (manifestResults.length > 0) {
+    const unique = Array.from(new Map(manifestResults.map(s => [s.url, s])).values());
+    const sorted = unique.sort((a, b) => (parseInt(b.qualityLabel) || 0) - (parseInt(a.qualityLabel) || 0));
+    return { type: 'manifest', streams: sorted };
+  }
+  if (data.formats && data.formats.length > 0) {
+    const validFormats = data.formats.filter(f => f.url);
+    if (validFormats.length > 0) return { type: 'formats', streams: validFormats };
+  }
+  if (data.videoUrl || data.video_url) {
+    const v = data.videoUrl || data.video_url;
+    const a = data.audioUrl || data.audio_url;
+    const streams = [{ url: v, ext: 'mp4', vcodec: 'avc1', acodec: a ? 'none' : 'mp4a.40.2', height: data.height || 360 }];
+    if (a) streams.push({ url: a, ext: 'm4a', vcodec: 'none', acodec: 'mp4a.40.2' });
+    return { type: 'formats', streams };
+  }
+  if (data.url) return { type: 'single', streams: [{ url: data.url, ext: 'mp4', height: 360 }] };
+  if (Array.isArray(data.streams) && data.streams.length > 0) {
+    const valid = data.streams.filter(s => s.url);
+    if (valid.length > 0) return { type: 'formats', streams: valid };
   }
   return null;
 }
 
-async function manifestHunt(videoId) {
-  for (const buildUrl of STREAM_SOURCES) {
-    const apiBase = buildUrl(videoId);
-    const result = await fetchStreamSource(apiBase);
-    if (result) {
-      console.log('[StreamHunter] success via', apiBase);
-      return result;
-    }
+async function fetchStreamSource(apiBase) {
+  // プロキシ候補を並列で叩き、最速の成功を返す
+  const attempts = STREAM_PROXIES.map(proxy => {
+    const targetUrl = proxy ? proxy + encodeURIComponent(apiBase) : apiBase;
+    return fetch(targetUrl, { signal: AbortSignal.timeout(12000) })
+      .then(tryParseStream)
+      .then(r => {
+        if (!r) throw new Error('parse failed');
+        return r;
+      })
+      .catch(e => { throw e; });
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch(e) {
+    console.warn('[StreamHunter] all proxies failed:', apiBase);
+    return null;
   }
-  return null;
+}
+
+// 全ストリーム元を並列で叩き、最速で返ってきた成功結果を採用
+async function manifestHunt(videoId) {
+  const tasks = STREAM_SOURCES.map(buildUrl => {
+    const apiBase = buildUrl(videoId);
+    return fetchStreamSource(apiBase).then(result => {
+      if (!result) throw new Error('no result: ' + apiBase);
+      console.log('[StreamHunter] fastest via', apiBase);
+      return result;
+    });
+  });
+  try {
+    return await Promise.any(tasks);
+  } catch (e) {
+    console.warn('[StreamHunter] all sources failed', e);
+    return null;
+  }
 }
 
 // =================== siawaseok API (manifestHuntを内部利用) ===================
@@ -2049,6 +2134,9 @@ async function triggerSearch(query, context, append = false) {
     invData.forEach(item => {
       if (item.type === 'video' && item.videoId && !seenVideoIds.has(item.videoId)) {
         if (context === 'shorts' && item.lengthSeconds > 61) return;
+        // ホーム(trend)ではShortsを除外
+        if (context === 'trend' && item.lengthSeconds > 0 && item.lengthSeconds <= 61) return;
+        if (context === 'trend' && (item.title||'').toLowerCase().includes('#shorts')) return;
         seenVideoIds.add(item.videoId);
         videos.push({ id: item.videoId, title: item.title, channel: item.author, isShort: item.lengthSeconds > 0 && item.lengthSeconds <= 61, isLive: item.liveNow||false, authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${item.author}`, duration: item.lengthSeconds||0, published: item.publishedText||'', viewCount: item.viewCount||0 });
       }
@@ -2400,7 +2488,13 @@ function renderResults(videos, append = false) {
   if (searchContext === 'shorts') { renderShorts(videos, append); return; }
   if (searchContext === 'channel-shorts') { renderChannelShorts(videos, append); return; }
   if (searchContext === 'channel-live') { renderChannelLive(videos, append); return; }
+  if (searchContext === 'channel-home-shorts') { renderChannelHomeShortsRow(videos); return; }
   if (searchContext === 'search') { renderSearchResults(videos, append); return; }
+  // チャンネルホーム: 通常動画を横スクロール行 + 縦グリッド
+  if (searchContext === 'channel' || searchContext === 'channel-home') {
+    renderChannelHomeRow(videos);
+    // 続けて縦グリッドにも表示
+  }
   let containerId = 'home-grid';
   if (searchContext === 'channel' || searchContext === 'channel-home') containerId = 'channel-home-grid';
   if (searchContext === 'channel-videos') containerId = 'channel-grid';
@@ -2419,6 +2513,40 @@ function renderResults(videos, append = false) {
   document.getElementById('home-loader')?.classList.add('hidden');
   document.getElementById('channel-loader')?.classList.add('hidden');
   if ((searchContext === 'channel' || searchContext === 'channel-home') && videos.length > 0 && !append) renderChannelFeatured(videos[0]);
+}
+
+function renderChannelHomeRow(videos) {
+  const row = document.getElementById('channel-home-row');
+  if (!row) return;
+  // 通常動画のみ (Shortsを除外)
+  const regular = videos.filter(v => !v.isShort && (v.duration === undefined || v.duration === 0 || v.duration > 60));
+  if (regular.length === 0) { row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">動画が見つかりませんでした</div>'; return; }
+  row.innerHTML = regular.slice(0, 20).map(v => {
+    const safeTitle = (v.title||'').replace(/'/g,"\\'");
+    const safeChannel = (v.channel||'').replace(/'/g,"\\'");
+    const dur = formatDuration(v.duration);
+    return `<div class="video-card-h" onclick="playVideo('${v.id}','${safeTitle}','${safeChannel}','${v.authorThumb||''}')">
+      <div class="vh-thumb"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy">${dur ? `<span class="duration-badge">${dur}</span>` : ''}</div>
+      <div class="vh-title">${v.title||''}</div>
+      <div class="vh-meta">${v.viewCount?formatViews(v.viewCount):''}${v.published?` ・ ${v.published}`:''}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderChannelHomeShortsRow(videos) {
+  const row = document.getElementById('channel-home-shorts-row');
+  if (!row) return;
+  // fetchChannelShortsMultiPageから来た動画はすべてShortsとして扱う
+  const shorts = (videos||[]).slice(0, 20);
+  if (shorts.length === 0) { row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">ショートが見つかりませんでした</div>'; return; }
+  row.innerHTML = shorts.map(v => {
+    const safeTitle = (v.title||'').replace(/'/g,"\\'");
+    const safeChannel = (v.channel||'').replace(/'/g,"\\'");
+    return `<div class="home-short-card" onclick="navigateToShortPage('${v.id}','${safeTitle}','${safeChannel}','${v.authorThumb||''}')">
+      <div class="home-short-thumb"><img src="https://i.ytimg.com/vi/${v.id}/hqdefault.jpg" loading="lazy"></div>
+      <div class="home-short-title">${v.title||''}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderSearchResults(videos, append = false) {
@@ -2606,16 +2734,91 @@ function openChannel(channelName, thumb = null) {
 
 function switchChannelTab(tab) {
   currentChannelTab = tab;
-  ['home','shorts','videos','live'].forEach(t => {
+  ['home','shorts','videos','live','playlists','collabs'].forEach(t => {
     const tabBtn = document.getElementById(`ch-tab-${t}`), tabContent = document.getElementById(`channel-tab-${t}`);
     if (tabBtn) tabBtn.classList.toggle('active', t === tab);
     if (tabContent) tabContent.style.display = t === tab ? 'block' : 'none';
   });
   const name = currentChannelData.name; lastQuery = name;
-  if (tab === 'home') { document.getElementById('channel-home-grid').innerHTML = ''; document.getElementById('channel-featured-video').innerHTML = ''; triggerSearch(name,'channel-home'); }
+  if (tab === 'home') {
+    document.getElementById('channel-home-grid').innerHTML = '';
+    document.getElementById('channel-home-row').innerHTML = '<div style="color:var(--text-secondary);padding:12px;">読み込み中...</div>';
+    document.getElementById('channel-home-shorts-row').innerHTML = '<div style="color:var(--text-secondary);padding:12px;">読み込み中...</div>';
+    document.getElementById('channel-featured-video').innerHTML = '';
+    triggerSearch(name,'channel-home');
+    // Shortsはチャンネル専用APIで確実に取得
+    (async () => {
+      try {
+        const { shorts } = await fetchChannelShortsMultiPage(name, 1);
+        renderChannelHomeShortsRow(shorts || []);
+      } catch (e) {
+        renderChannelHomeShortsRow([]);
+      }
+    })();
+  }
   else if (tab === 'shorts') { document.getElementById('channel-shorts-grid').innerHTML = ''; document.getElementById('channel-shorts-loader').classList.remove('hidden'); currentChannelShortsPage = 1; triggerSearch(name,'channel-shorts'); }
   else if (tab === 'videos') { document.getElementById('channel-grid').innerHTML = ''; document.getElementById('channel-loader').classList.remove('hidden'); triggerSearch(name,'channel-videos'); }
   else if (tab === 'live') { document.getElementById('channel-live-grid').innerHTML = ''; document.getElementById('channel-live-loader').classList.remove('hidden'); triggerSearch(name,'channel-live'); }
+  else if (tab === 'playlists') { renderChannelPlaylists(); }
+  else if (tab === 'collabs') { renderChannelCollabs(); }
+}
+
+// チャンネル内検索
+function searchInChannel() {
+  const q = (document.getElementById('channel-search-input')?.value || '').trim();
+  if (!q) return;
+  const name = currentChannelData.name || '';
+  // 動画タブに切り替えてチャンネル名 + クエリで検索
+  switchChannelTab('videos');
+  document.getElementById('channel-grid').innerHTML = '';
+  document.getElementById('channel-loader').classList.remove('hidden');
+  lastQuery = `${name} ${q}`;
+  triggerSearch(lastQuery, 'channel-videos');
+}
+
+// 再生リスト(チャンネル内): ユーザーの再生リストにチャンネル動画があるものを表示
+function renderChannelPlaylists() {
+  const list = document.getElementById('channel-playlists-list');
+  if (!list) return;
+  const name = (currentChannelData.name || '').toLowerCase();
+  let pls = [];
+  try { pls = JSON.parse(localStorage.getItem('playlists') || '[]'); } catch(e) {}
+  const matches = pls.filter(p => (p.videos||[]).some(v => (v.channel||'').toLowerCase() === name));
+  if (matches.length === 0) {
+    list.innerHTML = '<div style="padding:24px;color:var(--text-secondary);">このチャンネルの動画を含む再生リストはまだありません</div>';
+    return;
+  }
+  list.innerHTML = matches.map(p => {
+    const first = (p.videos||[])[0];
+    const thumb = first ? `https://i.ytimg.com/vi/${first.id}/mqdefault.jpg` : '';
+    return `<div class="playlist-card" onclick="openPlaylist('${p.id}')">
+      <div class="playlist-thumb">${thumb?`<img src="${thumb}">`:''}<span class="playlist-count">${(p.videos||[]).length}本</span></div>
+      <div class="playlist-info"><div class="playlist-title">${p.name||'無題'}</div><div class="playlist-meta">再生リスト</div></div>
+    </div>`;
+  }).join('');
+}
+
+// コラボレーション: 登録チャンネルを参考にしたコラボ候補を表示
+function renderChannelCollabs() {
+  const grid = document.getElementById('channel-collabs-grid');
+  const loader = document.getElementById('channel-collabs-loader');
+  if (!grid) return;
+  loader && loader.classList.add('hidden');
+  let subs = [];
+  try { subs = JSON.parse(localStorage.getItem('subscriptions') || '[]'); } catch(e) {}
+  const others = subs.filter(s => (s.name||'').toLowerCase() !== (currentChannelData.name||'').toLowerCase()).slice(0, 12);
+  if (others.length === 0) {
+    grid.innerHTML = '<div class="channel-collab-empty">コラボレーションチャンネルはまだ登録されていません。登録チャンネルを追加すると候補が表示されます。</div>';
+    return;
+  }
+  grid.innerHTML = others.map(s => {
+    const thumb = s.thumb || `https://i.pravatar.cc/150?u=${encodeURIComponent(s.name)}`;
+    const safe = (s.name||'').replace(/'/g,"\\'");
+    return `<div class="channel-collab-card" onclick="openChannel('${safe}','${thumb}')">
+      <img src="${thumb}" onerror="this.src='https://i.pravatar.cc/150?u=${encodeURIComponent(s.name)}'">
+      <div class="channel-collab-name">${s.name||''}</div>
+    </div>`;
+  }).join('');
 }
 
 // =================== 動画再生 ===================
@@ -2813,7 +3016,20 @@ function saveToLocal(key, video) {
   localStorage.setItem(key, JSON.stringify(list.slice(0, 50)));
 }
 function renderLocalList(type) {
-  document.getElementById(`${type}-grid`).innerHTML = JSON.parse(localStorage.getItem(type)||'[]').map(v => `<div class="video-card" onclick="playVideo('${v.id}','${v.title.replace(/'/g,"\\'")}','YouTube Channel')"><div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg"></div><div class="video-details" style="padding:10px;"><div class="video-title">${v.title}</div></div></div>`).join('');
+  const items = JSON.parse(localStorage.getItem(type)||'[]');
+  const grid = document.getElementById(`${type}-grid`);
+  if (!grid) return;
+  grid.innerHTML = items.map(v => `<div class="video-card" onclick="playVideo('${v.id}','${v.title.replace(/'/g,"\\'")}','YouTube Channel')"><div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg"></div><div class="video-details" style="padding:10px;"><div class="video-title">${v.title}</div></div></div>`).join('');
+  if (type === 'history') {
+    const empty = document.getElementById('history-empty');
+    if (empty) empty.style.display = items.length === 0 ? 'block' : 'none';
+  }
+}
+
+function clearWatchHistory() {
+  if (!confirm('視聴履歴をすべて消去しますか？')) return;
+  localStorage.removeItem('history');
+  renderLocalList('history');
 }
 
 async function fetchComments(videoId) {
