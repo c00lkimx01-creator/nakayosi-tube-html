@@ -1214,7 +1214,27 @@ function buildFetchUrl(targetUrl) { return getAppConfig().proxy ? CORS_PROXIES[0
 
 function initApp() {
   const config = getAppConfig();
-  if (config.theme === 'dark') document.body.setAttribute('data-theme', 'dark');
+  // デバイス設定に従ってテーマを切替（ユーザーが明示的に設定していない場合）
+  const mql = window.matchMedia('(prefers-color-scheme: dark)');
+  if (!config.themeManual) {
+    const deviceTheme = mql.matches ? 'dark' : 'light';
+    document.body.setAttribute('data-theme', deviceTheme);
+    config.theme = deviceTheme;
+    try { localStorage.setItem('study2525_config', JSON.stringify(config)); } catch(e){}
+    if (mql.addEventListener) {
+      mql.addEventListener('change', (e) => {
+        const cfg = getAppConfig();
+        if (cfg.themeManual) return;
+        const t = e.matches ? 'dark' : 'light';
+        document.body.setAttribute('data-theme', t);
+        cfg.theme = t;
+        try { localStorage.setItem('study2525_config', JSON.stringify(cfg)); } catch(e){}
+        syncSettings(cfg);
+      });
+    }
+  } else if (config.theme === 'dark') {
+    document.body.setAttribute('data-theme', 'dark');
+  }
   shortStreamType = config.shortStream || 1;
   syncSettings(config);
   renderSidebarSubscriptions();
@@ -1241,17 +1261,21 @@ function initApp() {
 function toggleTheme() {
   const isDark = document.body.getAttribute('data-theme') === 'dark';
   document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
-  const config = getAppConfig(); config.theme = isDark ? 'light' : 'dark';
+  const config = getAppConfig(); config.theme = isDark ? 'light' : 'dark'; config.themeManual = true;
   localStorage.setItem('study2525_config', JSON.stringify(config));
   syncSettings(config);
 }
 function toggleThemeFromSettings() {
   const isDark = document.getElementById('setting-theme').checked;
-  document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); saveSettings();
+  document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  const c = getAppConfig(); c.themeManual = true; localStorage.setItem('study2525_config', JSON.stringify(c));
+  saveSettings();
 }
 function toggleThemeFromNavSettings() {
   const isDark = document.getElementById('nav-setting-theme').checked;
-  document.body.setAttribute('data-theme', isDark ? 'dark' : 'light'); saveNavSettings();
+  document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  const c = getAppConfig(); c.themeManual = true; localStorage.setItem('study2525_config', JSON.stringify(c));
+  saveNavSettings();
 }
 function finishSetup() { saveSettings(); navigate('home'); if(getAppConfig().trend) loadTrend(); }
 
