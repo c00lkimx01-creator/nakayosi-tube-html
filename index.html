@@ -1438,7 +1438,7 @@ function deepSearch(obj) {
  
 // ytdlp ストリーム取得元 - nkys-yt-dlp のみ使用
 const STREAM_SOURCES = [
-  vid => `https://nkys-yt-dlp2.onrender.com/api/video/${vid}`,
+  vid => `https://nkys-yt-dlp4.onrender.com/api/video/${vid}`,
 ];
 const STREAM_PROXIES = [
   '',
@@ -1532,6 +1532,30 @@ async function manifestHunt(videoId) {
   }
 }
  
+
+// =================== ytdlp プリフェッチキャッシュ ===================
+const _ytdlpCache = new Map();
+const _ytdlpPending = new Map();
+const _YTDLP_TTL = 5 * 60 * 1000;
+function prefetchYtdlp(videoId) {
+  if (!videoId) return null;
+  const c = _ytdlpCache.get(videoId);
+  if (c && (Date.now()-c.ts) < _YTDLP_TTL) return Promise.resolve(c.result);
+  if (_ytdlpPending.has(videoId)) return _ytdlpPending.get(videoId);
+  const pr = manifestHunt(videoId).then(r => {
+    if (r) _ytdlpCache.set(videoId, {result:r, ts:Date.now()});
+    _ytdlpPending.delete(videoId);
+    return r;
+  }).catch(e => { _ytdlpPending.delete(videoId); return null; });
+  _ytdlpPending.set(videoId, pr);
+  return pr;
+}
+function getCachedYtdlp(videoId) {
+  const c = _ytdlpCache.get(videoId);
+  if (c && (Date.now()-c.ts) < _YTDLP_TTL) return c.result;
+  return null;
+}
+
 // =================== siawaseok API (manifestHuntを内部利用) ===================
 async function fetchGVStreamsFromSiawaseok(videoId) {
   const result = await manifestHunt(videoId);
@@ -1723,8 +1747,9 @@ async function setupWatchManifest(videoId) {
     <div style="font-size:13px;color:#0f0;font-family:monospace;">🚨 ytdlp(nkys-yt-dlp)から取得中...</div>
   </div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
  
-  // manifestHuntで直接取得
-  const huntResult = await manifestHunt(videoId);
+  // プリフェッチ済みなら即時、無ければ取得
+  let huntResult = getCachedYtdlp(videoId);
+  if (!huntResult) huntResult = await prefetchYtdlp(videoId);
  
   if (huntResult && huntResult.type === 'formats' && huntResult.streams.length > 0) {
     const formats = huntResult.streams;
@@ -1732,11 +1757,10 @@ async function setupWatchManifest(videoId) {
     buildSiawaseokQualityPanel(formats);
     buildDownloadPanelFromSiawaseok(formats, 'watch');
     const { mp4Pairs } = parseSiawaseokFormats(formats);
-    // muxed (itag 18/22) を最優先 -> 360p/480p/720p
-    const muxed = formats.find(f => f._muxed);
-    const defaultLabels = ['360p','480p','720p'];
+    // 音声付き(mp4+m4a同時)を優先: 720p > 480p > 360p
+    const defaultLabels = ['720p','480p','360p','1080p'];
     let defaultQ = null;
-    if (muxed) defaultQ = mp4Pairs.find(p => p.label === (muxed.qualityLabel || '360p'));
+    for (const dl of defaultLabels) { defaultQ = mp4Pairs.find(p => p.label === dl && p.audioFmt); if (defaultQ) break; }
     if (!defaultQ) for (const dl of defaultLabels) { defaultQ = mp4Pairs.find(p => p.label === dl); if (defaultQ) break; }
     selectedQuality = defaultQ ? defaultQ.label : (mp4Pairs[0] ? mp4Pairs[0].label : null);
     if (selectedQuality && document.getElementById('quality-label')) document.getElementById('quality-label').textContent = selectedQuality;
@@ -1996,6 +2020,13 @@ function observeShortItem(el) { if (shortObserver) shortObserver.observe(el); }
 function getWatchHistory() { try { return JSON.parse(localStorage.getItem('history') || '[]'); } catch(e) { return []; } }
 function getSearchHistory() { try { return JSON.parse(localStorage.getItem('search_history') || '[]'); } catch(e) { return []; } }
 function saveSearchHistory(query) { /* override: 検索履歴を保存しない */ }
+function _renderRecCard(v, grid) {
+  const card = document.createElement('div'); card.className = 'video-card';
+  const durStr = formatDuration(v.duration);
+  card.onclick = () => playVideo(v.id, v.title, v.channel, v.authorThumb);
+  card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${durStr ? `<span class="duration-badge">${durStr}</span>` : ''}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}', '${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta-channel"><span>${v.channel}</span></div><div class="video-meta">${v.viewCount ? `<span>${formatViews(v.viewCount)}</span>` : ''}${v.published ? `<span>・ ${v.published}</span>` : ''}</div></div></div>`;
+  grid.appendChild(card);
+}
 async function loadRecommendations() {
   const history = getWatchHistory(), searches = getSearchHistory();
   const grid = document.getElementById('home-recommend-grid'), section = document.getElementById('home-recommend');
@@ -2007,25 +2038,23 @@ async function loadRecommendations() {
   history.slice(0, 5).forEach(v => { const words = v.title.replace(/[【】「」『』\[\]【】]/g,' ').split(/\s+/); words.slice(0,2).forEach(w => { if (w.length > 2) keywords.push(w); }); });
   searches.slice(0, 3).forEach(s => keywords.push(s));
   if (keywords.length === 0) { section.classList.add('hidden'); return; }
-  const pick = keywords.sort(() => Math.random() - 0.5).slice(0, 2);
-  const results = [];
-  for (const kw of pick) {
-    const data = await fetchFromInvidious(kw, 'trend', 1);
-    if (data) data.filter(v => v.type==='video' && v.videoId).slice(0,4).forEach(v => {
-      if (!history.some(h => h.id === v.videoId) && results.length < 8) {
-        results.push({ id: v.videoId, title: v.title, channel: v.author, isShort: v.lengthSeconds > 0 && v.lengthSeconds <= 61, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${v.author}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0 });
-      }
-    });
-  }
-  grid.innerHTML = '';
-  if (results.length === 0) { section.classList.add('hidden'); return; }
-  results.forEach(v => {
-    const card = document.createElement('div'); card.className = 'video-card';
-    const durStr = formatDuration(v.duration);
-    card.onclick = () => playVideo(v.id, v.title, v.channel, v.authorThumb);
-    card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${durStr ? `<span class="duration-badge">${durStr}</span>` : ''}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}', '${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta-channel"><span>${v.channel}</span></div><div class="video-meta">${v.viewCount ? `<span>${formatViews(v.viewCount)}</span>` : ''}${v.published ? `<span>・ ${v.published}</span>` : ''}</div></div></div>`;
-    grid.appendChild(card);
-  });
+  const pick = keywords.sort(() => Math.random() - 0.5).slice(0, 3);
+  // 並列取得 + 最初の応答が来た時点で即描画
+  const seen = new Set(); const histIds = new Set(history.map(h=>h.id));
+  let cleared = false;
+  const tasks = pick.map(kw => fetchFromInvidious(kw, 'trend', 1).then(data => {
+    if (!data) return;
+    const incoming = data.filter(v => v.type==='video' && v.videoId).slice(0,4);
+    if (!cleared) { grid.innerHTML = ''; cleared = true; }
+    for (const v of incoming) {
+      if (seen.has(v.videoId) || histIds.has(v.videoId)) continue;
+      if (grid.children.length >= 8) break;
+      seen.add(v.videoId);
+      _renderRecCard({ id: v.videoId, title: v.title, channel: v.author, isShort: v.lengthSeconds > 0 && v.lengthSeconds <= 61, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${v.author}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0 }, grid);
+    }
+  }).catch(()=>{}));
+  await Promise.all(tasks);
+  if (!cleared || grid.children.length === 0) { section.classList.add('hidden'); }
 }
  
 // =================== APIフェッチ ===================
@@ -2371,23 +2400,29 @@ async function fetchShortsForHome() {
   const container = document.getElementById('home-shorts-container'), section = document.getElementById('home-shorts');
   const container2 = document.getElementById('home-shorts2-container'), section2 = document.getElementById('home-shorts2');
   if (!container || !section) return;
-  // 並列で複数クエリを叩いてショートを大量取得
+  // 並列で複数クエリ。最初の応答が来た瞬間に即描画(高速化)
   const queries = ["人気 #shorts","#shorts 人気","ショート 人気","shorts popular japan","おすすめ #shorts","面白い #shorts","話題 #shorts","#shorts 急上昇"];
-  const results = await Promise.all(queries.map(q => fetchFromInvidious(q,"shorts",1).catch(() => null)));
   const seen = new Set();
   let shorts = [];
-  for (const data of results) {
-    if (!data || !data.length) continue;
+  let firstShown = false;
+  const tasks = queries.map(q => fetchFromInvidious(q,"shorts",1).then(data => {
+    if (!data || !data.length) return;
     for (const v of data) {
       if (!v.videoId || seen.has(v.videoId)) continue;
       if (v.lengthSeconds < 0 || (v.lengthSeconds > 65 && !v.isShort)) continue;
-      seen.add(v.videoId);
-      shorts.push(v);
+      seen.add(v.videoId); shorts.push(v);
     }
-  }
+    if (!firstShown && shorts.length >= 4) {
+      firstShown = true;
+      renderShortCardsTo(container, shorts.slice(0, 16));
+      section.classList.remove('hidden');
+    } else if (firstShown) {
+      renderShortCardsTo(container, shorts.slice(0, 16));
+    }
+  }).catch(() => null));
+  await Promise.all(tasks);
   if (shorts.length === 0) return;
-  renderShortCardsTo(container, shorts.slice(0, 16));
-  section.classList.remove('hidden');
+  if (!firstShown) { renderShortCardsTo(container, shorts.slice(0, 16)); section.classList.remove('hidden'); }
   if (container2 && section2 && shorts.length > 16) {
     renderShortCardsTo(container2, shorts.slice(16, 36));
     section2.classList.remove('hidden');
@@ -3073,6 +3108,7 @@ async function playVideo(id, title, channel = "投稿者", thumb = null) {
   document.getElementById('api-date').innerText = ""; document.getElementById('api-desc').innerHTML = "概要欄を読み込んでいます...";
   document.getElementById('quality-wrap').style.display = 'none';
   updateWatchSubscribeUI(channel);
+  prefetchYtdlp(id);
   setTimeout(() => switchStream(getAppConfig().stream), 50);
   saveToLocal('history',{id,title,channel,authorThumb: currentChannelThumb, savedAt: Date.now()});
   // 関連動画 / コメント / メタ情報を並列で取得 (役割分担で高速化)
