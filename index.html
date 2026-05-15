@@ -55,13 +55,11 @@ header {
   position: fixed; top: 0; width: 100%; height: 56px;
   background-color: var(--header-bg); display: flex; align-items: center;
   justify-content: space-between; padding: 0 16px; z-index: 100;
-  border-bottom: 1px solid var(--border-color);
 }
 .header-left { display: flex; align-items: center; gap: 16px; }
-.logo { display: flex; align-items: center; gap: 3px; font-size: 18px; font-weight: bold; cursor: pointer; letter-spacing: -1.5px; }
-.logo svg { fill: #ff0000 !important; width: 28px; height: 28px; }
-.logo .logo-text { display: inline-block; transform: scaleX(0.78); transform-origin: left center; font-size: 17px; }
-.logo .logo-jp { font-size: 10px; font-weight: 700; color: var(--text-secondary); margin-left: 4px; padding: 1px 4px; border: 1px solid var(--border-color); border-radius: 3px; line-height: 1; align-self: center; letter-spacing: 0; }
+.logo { display: flex; align-items: center; gap: 4px; font-size: 20px; font-weight: bold; cursor: pointer; letter-spacing: -1.5px; }
+.logo svg { fill: #ff0000 !important; width: 34px; height: 34px; }
+.logo .logo-text { display: inline-block; transform: scaleX(0.78); transform-origin: left center; font-size: 20px; }
 .header-center { flex: 1; max-width: 720px; display: flex; justify-content: center; margin: 0 40px; }
 .search-bar { display: flex; width: 100%; max-width: 600px; height: 40px; border: 1px solid var(--search-border); border-radius: 20px; overflow: hidden; background-color: var(--search-bg); box-shadow: inset 0 1px 2px rgba(0,0,0,0.01); }
 .search-bar input { flex: 1; padding: 0 16px 0 24px; border: none; background: transparent; color: var(--text-color); outline: none; font-size: 16px; }
@@ -116,7 +114,8 @@ header {
 }
 .sidebar-item.active svg { fill: currentColor; stroke: none; }
 .logo svg { fill: var(--primary-color) !important; stroke: none !important; }
-.header-left .icon-btn svg, .header-right .icon-btn svg { fill: currentColor !important; stroke: none !important; }
+.header-left .icon-btn svg, .header-right .icon-btn svg { fill: currentColor; stroke: none; }
+#toggle-sidebar-btn svg { fill: none !important; stroke: currentColor !important; stroke-width: 2.4 !important; stroke-linecap: round !important; }
 .sidebar-item .label { font-size: 10px; line-height: 1; }
 .sidebar.open .sidebar-item .label { font-size: 14px; }
 .sidebar-divider { height: 1px; background-color: var(--border-color); margin: 8px 0; display: none; }
@@ -229,7 +228,7 @@ main.sidebar-open { margin-left: 240px; }
 .home-shorts-title svg { fill: #ff0000; stroke: none; width: 24px; height: 24px; }
 .home-shorts-scroll { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
 .home-shorts-scroll::-webkit-scrollbar { display: none; }
-.home-short-card { flex: 0 0 160px; cursor: pointer; }
+.home-short-card { flex: 0 0 160px; cursor: pointer; position: relative; }
 .home-short-thumb { width: 100%; aspect-ratio: 9/16; border-radius: 12px; background: #000; overflow: hidden; margin-bottom: 8px; position: relative; }
 .home-short-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s; }
 .home-short-card:hover .home-short-thumb img { transform: scale(1.04); }
@@ -322,7 +321,7 @@ main.sidebar-open { margin-left: 240px; }
 .channel-filter-chip:hover { background: var(--chip-hover); }
  
 .channel-shorts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-.channel-short-card { cursor: pointer; }
+.channel-short-card { cursor: pointer; position: relative; }
 .channel-short-thumb { width: 100%; aspect-ratio: 9/16; border-radius: 12px; background: #000; overflow: hidden; margin-bottom: 8px; position: relative; }
 .channel-short-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s; }
 .channel-short-card:hover .channel-short-thumb img { transform: scale(1.04); }
@@ -618,7 +617,28 @@ input:checked + .slider:before { transform: translateX(20px); }
 .home-row-scroll .video-card { flex: 0 0 360px; }
 @media (max-width: 600px) { .home-row-scroll .video-card { flex: 0 0 300px; } }
 .home-shorts-scroll { scroll-behavior: smooth; }
- 
+
+/* Auto-attached horizontal scroll buttons (overlay) */
+.hsb-wrap { position: relative; }
+.hsb-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,0.95); color: #000;
+  border: 1px solid var(--border-color);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 50; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  opacity: 0.95; transition: opacity .15s, background .15s;
+}
+[data-theme="dark"] .hsb-arrow { background: rgba(40,40,40,0.95); color: #fff; }
+.hsb-arrow svg { width: 18px; height: 18px; fill: currentColor; }
+.hsb-arrow.prev { left: 4px; }
+.hsb-arrow.next { right: 4px; }
+.hsb-arrow:hover { opacity: 1; background: var(--hover-color); }
+.hsb-arrow[disabled] { opacity: 0; pointer-events: none; }
+/* categories-bar は固定配置なのでラップせず内部にボタンを直接置く */
+.categories-bar .hsb-arrow { position: fixed; top: 56px; height: 56px; width: 48px; border-radius: 0; box-shadow: none; background: linear-gradient(90deg, var(--bg-color), var(--bg-color) 60%, transparent); border: none; }
+.categories-bar .hsb-arrow.next { right: 0; background: linear-gradient(270deg, var(--bg-color), var(--bg-color) 60%, transparent); }
+
 </style>
 </head>
 <body>
@@ -632,13 +652,12 @@ input:checked + .slider:before { transform: translateX(20px); }
  
 <header>
   <div class="header-left">
-    <button class="icon-btn" id="toggle-sidebar-btn" onclick="toggleSidebar()" aria-label="メニュー">
-      <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M21 6H3V5h18v1zm0 5H3v1h18v-1zm0 6H3v1h18v-1z"/></svg>
+    <button class="icon-btn" id="toggle-sidebar-btn" onclick="toggleSidebar()" aria-label="メニュー" style="display:flex !important; align-items:center; justify-content:center;">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="3" y="5" width="18" height="2" rx="1" fill="currentColor"></rect><rect x="3" y="11" width="18" height="2" rx="1" fill="currentColor"></rect><rect x="3" y="17" width="18" height="2" rx="1" fill="currentColor"></rect></svg>
     </button>
     <div class="logo" onclick="navigate('home')">
       <svg viewBox="0 0 24 24"><path fill="#ff0000" d="M21.58,7.19C21.34,6.31,20.69,5.66,19.81,5.42C18.25,5,12,5,12,5s-6.25,0-7.81,0.42c-0.88,0.24-1.53,0.89-1.77,1.77 C2,8.75,2,12,2,12s0,3.25,0.42,4.81c0.24,0.88,0.89,1.53,1.77,1.77C5.75,19,12,19,12,19s6.25,0,7.81-0.42 c0.88-0.24,1.53-0.89,1.77-1.77C22,15.25,22,12,22,12S22,8.75,21.58,7.19z M10,15.5v-7l6,3.5L10,15.5z"></path></svg>
       <span class="logo-text">仲良しTube</span>
-      <span class="logo-jp">JP</span>
     </div>
   </div>
   <div class="header-center">
@@ -662,10 +681,44 @@ input:checked + .slider:before { transform: translateX(20px); }
   <button class="category-chip active" onclick="handleCategorySearch('すべて', this)">すべて</button>
   <button class="category-chip" onclick="handleCategorySearch('音楽', this)">音楽</button>
   <button class="category-chip" onclick="handleCategorySearch('ゲーム', this)">ゲーム</button>
-  <button class="category-chip" onclick="handleCategorySearch('ニュース', this)">ニュース</button>
   <button class="category-chip" onclick="handleCategorySearch('ライブ', this)">ライブ</button>
+  <button class="category-chip" onclick="handleCategorySearch('ニュース', this)">ニュース</button>
   <button class="category-chip" onclick="handleCategorySearch('アニメ', this)">アニメ</button>
   <button class="category-chip" onclick="handleCategorySearch('料理', this)">料理</button>
+  <button class="category-chip" onclick="handleCategorySearch('スポーツ', this)">スポーツ</button>
+  <button class="category-chip" onclick="handleCategorySearch('ポッドキャスト', this)">ポッドキャスト</button>
+  <button class="category-chip" onclick="handleCategorySearch('映画', this)">映画</button>
+  <button class="category-chip" onclick="handleCategorySearch('ドラマ', this)">ドラマ</button>
+  <button class="category-chip" onclick="handleCategorySearch('お笑い', this)">お笑い</button>
+  <button class="category-chip" onclick="handleCategorySearch('VTuber', this)">VTuber</button>
+  <button class="category-chip" onclick="handleCategorySearch('ボカロ', this)">ボカロ</button>
+  <button class="category-chip" onclick="handleCategorySearch('K-POP', this)">K-POP</button>
+  <button class="category-chip" onclick="handleCategorySearch('J-POP', this)">J-POP</button>
+  <button class="category-chip" onclick="handleCategorySearch('ロック', this)">ロック</button>
+  <button class="category-chip" onclick="handleCategorySearch('ジャズ', this)">ジャズ</button>
+  <button class="category-chip" onclick="handleCategorySearch('教育', this)">教育</button>
+  <button class="category-chip" onclick="handleCategorySearch('ビジネス', this)">ビジネス</button>
+  <button class="category-chip" onclick="handleCategorySearch('テクノロジー', this)">テクノロジー</button>
+  <button class="category-chip" onclick="handleCategorySearch('プログラミング', this)">プログラミング</button>
+  <button class="category-chip" onclick="handleCategorySearch('車', this)">車</button>
+  <button class="category-chip" onclick="handleCategorySearch('バイク', this)">バイク</button>
+  <button class="category-chip" onclick="handleCategorySearch('旅行', this)">旅行</button>
+  <button class="category-chip" onclick="handleCategorySearch('動物', this)">動物</button>
+  <button class="category-chip" onclick="handleCategorySearch('美容', this)">美容</button>
+  <button class="category-chip" onclick="handleCategorySearch('ファッション', this)">ファッション</button>
+  <button class="category-chip" onclick="handleCategorySearch('DIY', this)">DIY</button>
+  <button class="category-chip" onclick="handleCategorySearch('レビュー', this)">レビュー</button>
+  <button class="category-chip" onclick="handleCategorySearch('Vlog', this)">Vlog</button>
+  <button class="category-chip" onclick="handleCategorySearch('解説', this)">解説</button>
+  <button class="category-chip" onclick="handleCategorySearch('ASMR', this)">ASMR</button>
+  <button class="category-chip" onclick="handleCategorySearch('ホラー', this)">ホラー</button>
+  <button class="category-chip" onclick="handleCategorySearch('歴史', this)">歴史</button>
+  <button class="category-chip" onclick="handleCategorySearch('科学', this)">科学</button>
+  <button class="category-chip" onclick="handleCategorySearch('健康', this)">健康</button>
+  <button class="category-chip" onclick="handleCategorySearch('筋トレ', this)">筋トレ</button>
+  <button class="category-chip" onclick="handleCategorySearch('ペット', this)">ペット</button>
+  <button class="category-chip" onclick="handleCategorySearch('キャンプ', this)">キャンプ</button>
+  <button class="category-chip" onclick="handleCategorySearch('釣り', this)">釣り</button>
 </div>
  
 <div class="sidebar" id="sidebar">
@@ -1242,7 +1295,7 @@ function initApp() {
     navigate('welcome', { noHistory: true });
   } else if (urlState && urlState.view === 'watch' && urlState.videoId) {
     navigate('home', { noHistory: true });
-    fetch(`https://inv.nadeko.net/api/v1/videos/${urlState.videoId}?fields=title,author,authorThumbnails`)
+    fetch(`https://inv.nadeko.net/api/v1/videos/${urlState.videoId}?fields=title,author,authorThumbnails&hl=ja&region=JP`)
       .then(r => r.json()).then(d => {
         playVideo(urlState.videoId, d.title || urlState.videoId, d.author || '', d.authorThumbnails?.[0]?.url || null, true);
       }).catch(() => playVideo(urlState.videoId, urlState.videoId, '', null, true));
@@ -1438,7 +1491,7 @@ function deepSearch(obj) {
  
 // ytdlp ストリーム取得元 - nkys-yt-dlp のみ使用
 const STREAM_SOURCES = [
-  vid => `https://nkys-yt-dlp4.onrender.com/api/video/${vid}`,
+  vid => `https://nkys-yt-dlp5.onrender.com/api/video/${vid}`,
 ];
 const STREAM_PROXIES = [
   '',
@@ -1506,30 +1559,28 @@ async function fetchStreamSource(apiBase) {
   }
 }
  
-// 自前サーバー(/api/public/ytdlp)を最優先で叩き、失敗時のみ公開CORSプロキシで直接nkysを叩く
+// 自前サーバーと公開CORSプロキシを「並列」で同時に叩き、最速の成功を採用
 async function manifestHunt(videoId) {
-  // 1. 同一オリジンのサーバープロキシ (CORS無し・ブロックされない)
-  try {
-    const r = await fetch(`/api/public/ytdlp/${encodeURIComponent(videoId)}`, { signal: AbortSignal.timeout(20000) });
-    const result = await tryParseStream(r);
-    if (result) { console.log('[ytdlp] via own server'); return result; }
-  } catch (e) { console.warn('[ytdlp] own server failed', e); }
- 
-  // 2. フォールバック: 公開CORSプロキシ経由でnkysを直叩き
-  const tasks = STREAM_SOURCES.map(buildUrl => {
+  const tasks = [];
+  // 1. 同一オリジンのサーバープロキシ
+  tasks.push(
+    fetch(`/api/public/ytdlp/${encodeURIComponent(videoId)}`, { signal: AbortSignal.timeout(15000) })
+      .then(tryParseStream)
+      .then(r => { if (!r) throw new Error('own server empty'); console.log('[ytdlp] via own server'); return r; })
+  );
+  // 2. 公開CORSプロキシ経由でnkysを並列で叩く
+  for (const buildUrl of STREAM_SOURCES) {
     const apiBase = buildUrl(videoId);
-    return fetchStreamSource(apiBase).then(result => {
-      if (!result) throw new Error('no result: ' + apiBase);
-      console.log('[ytdlp] fastest via', apiBase);
-      return result;
-    });
-  });
-  try {
-    return await Promise.any(tasks);
-  } catch (e) {
-    console.warn('[ytdlp] all sources failed', e);
-    return null;
+    tasks.push(
+      fetchStreamSource(apiBase).then(result => {
+        if (!result) throw new Error('no result: ' + apiBase);
+        console.log('[ytdlp] via', apiBase);
+        return result;
+      })
+    );
   }
+  try { return await Promise.any(tasks); }
+  catch (e) { console.warn('[ytdlp] all sources failed', e); return null; }
 }
  
 
@@ -1567,24 +1618,33 @@ async function fetchGVStreamsFromSiawaseok(videoId) {
  
 function parseSiawaseokFormats(formats) {
   if (!formats) return { mp4Pairs: [], manifestList: [] };
+  // ★ "muxed" を最優先で取得（音声付き単一ファイル）
+  const muxedFormats = formats.filter(f => f._muxed && f.url);
   const mp4Formats = formats.filter(f => (f.ext === 'mp4' || f.container === 'mp4') && f.url && f.vcodec && f.vcodec !== 'none' && f.acodec === 'none');
   const m4aFormats = formats.filter(f => (f.ext === 'm4a' || f.acodec === 'mp4a.40.2') && f.url && (!f.vcodec || f.vcodec === 'none'));
-  const combinedMp4 = formats.filter(f => (f.ext === 'mp4') && f.url && f.acodec && f.acodec !== 'none' && f.vcodec && f.vcodec !== 'none');
-  // manifestリスト (manifest.を含むURL全般)
-  // ユーザー要求: "manifest." を含むURLのみを取得
+  const combinedMp4 = formats.filter(f => !f._muxed && (f.ext === 'mp4') && f.url && f.acodec && f.acodec !== 'none' && f.vcodec && f.vcodec !== 'none');
   const manifestList = formats.filter(f => f.url && String(f.url).includes('manifest.'));
   const mp4Pairs = [];
+  // muxed を最初に追加（音声付きで即再生可能）
+  muxedFormats.forEach(f => {
+    const lbl = getLabelFromFmt(f);
+    if (!mp4Pairs.find(p => p.label === lbl)) mp4Pairs.push({ videoFmt: f, audioFmt: null, resolution: getResolutionStr(f), label: lbl, isCombined: true, isMuxed: true });
+  });
   mp4Formats.forEach(vf => {
     const res = getResolutionStr(vf);
     const af = m4aFormats.find(a => true) || null;
-    mp4Pairs.push({ videoFmt: vf, audioFmt: af, resolution: res, label: getLabelFromFmt(vf) });
+    const lbl = getLabelFromFmt(vf);
+    if (!mp4Pairs.find(p => p.label === lbl)) mp4Pairs.push({ videoFmt: vf, audioFmt: af, resolution: res, label: lbl });
   });
   combinedMp4.forEach(f => {
     const lbl = getLabelFromFmt(f);
     if (!mp4Pairs.find(p => p.label === lbl)) mp4Pairs.push({ videoFmt: f, audioFmt: null, resolution: getResolutionStr(f), label: lbl, isCombined: true });
   });
+  // muxedを最優先、その後 解像度順
   const order = ['1440p','1080p','720p','480p','360p','240p','144p'];
   mp4Pairs.sort((a, b) => {
+    if (a.isMuxed && !b.isMuxed) return -1;
+    if (!a.isMuxed && b.isMuxed) return 1;
     const ia = order.indexOf(a.label), ib = order.indexOf(b.label);
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
@@ -1743,24 +1803,25 @@ async function selectSiawaseokQuality(label) {
 async function setupWatchManifest(videoId) {
   const wrapper = document.getElementById('player-wrapper');
   wrapper.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#000;color:#fff;flex-direction:column;gap:12px;">
-    <div style="width:40px;height:40px;border:4px solid rgba(255,255,255,0.3);border-top-color:#0f0;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-    <div style="font-size:13px;color:#0f0;font-family:monospace;">🚨 ytdlp(nkys-yt-dlp)から取得中...</div>
+    <div style="width:40px;height:40px;border:4px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+    <div style="font-size:13px;color:#fff;">読み込み中...</div>
   </div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
- 
+
   // プリフェッチ済みなら即時、無ければ取得
   let huntResult = getCachedYtdlp(videoId);
   if (!huntResult) huntResult = await prefetchYtdlp(videoId);
- 
+
   if (huntResult && huntResult.type === 'formats' && huntResult.streams.length > 0) {
     const formats = huntResult.streams;
     currentGVAllFormats = formats; currentGVFormats = null;
     buildSiawaseokQualityPanel(formats);
     buildDownloadPanelFromSiawaseok(formats, 'watch');
     const { mp4Pairs } = parseSiawaseokFormats(formats);
-    // 音声付き(mp4+m4a同時)を優先: 720p > 480p > 360p
+    // ★ muxed (音声付き単一ファイル) を最優先 → その後 720p > 480p > 360p
+    const muxedPair = mp4Pairs.find(p => p.isMuxed);
     const defaultLabels = ['720p','480p','360p','1080p'];
-    let defaultQ = null;
-    for (const dl of defaultLabels) { defaultQ = mp4Pairs.find(p => p.label === dl && p.audioFmt); if (defaultQ) break; }
+    let defaultQ = muxedPair || null;
+    if (!defaultQ) for (const dl of defaultLabels) { defaultQ = mp4Pairs.find(p => p.label === dl && p.audioFmt); if (defaultQ) break; }
     if (!defaultQ) for (const dl of defaultLabels) { defaultQ = mp4Pairs.find(p => p.label === dl); if (defaultQ) break; }
     selectedQuality = defaultQ ? defaultQ.label : (mp4Pairs[0] ? mp4Pairs[0].label : null);
     if (selectedQuality && document.getElementById('quality-label')) document.getElementById('quality-label').textContent = selectedQuality;
@@ -2062,7 +2123,7 @@ async function fetchFromInvidious(query, context, page = 1) {
   let q = query; if (context === 'shorts') q += ' #shorts';
   // 並列レース: 最初に成功したインスタンスを採用（最速化）
   const tryInst = (instance) => {
-    const url = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(q)}&page=${page}`);
+    const url = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(q)}&page=${page}&hl=ja&region=JP`);
     return fetch(url, { signal: AbortSignal.timeout(4500) }).then(r => {
       if(!r.ok) throw new Error('bad'); return r.json();
     }).then(d => { if(!d || (Array.isArray(d) && d.length===0)) throw new Error('empty'); return d; });
@@ -2401,10 +2462,11 @@ async function fetchShortsForHome() {
   const container2 = document.getElementById('home-shorts2-container'), section2 = document.getElementById('home-shorts2');
   if (!container || !section) return;
   // 並列で複数クエリ。最初の応答が来た瞬間に即描画(高速化)
-  const queries = ["人気 #shorts","#shorts 人気","ショート 人気","shorts popular japan","おすすめ #shorts","面白い #shorts","話題 #shorts","#shorts 急上昇"];
+  const queries = ["人気 #shorts","#shorts 人気","ショート 人気","shorts popular japan","おすすめ #shorts","面白い #shorts","話題 #shorts","#shorts 急上昇","新着 #shorts","バズ #shorts","かわいい #shorts","公式 #shorts"];
   const seen = new Set();
   let shorts = [];
   let firstShown = false;
+  const FIRST_LIMIT = 36, SECOND_LIMIT = 36;
   const tasks = queries.map(q => fetchFromInvidious(q,"shorts",1).then(data => {
     if (!data || !data.length) return;
     for (const v of data) {
@@ -2412,30 +2474,24 @@ async function fetchShortsForHome() {
       if (v.lengthSeconds < 0 || (v.lengthSeconds > 65 && !v.isShort)) continue;
       seen.add(v.videoId); shorts.push(v);
     }
-    if (!firstShown && shorts.length >= 4) {
+    if (!firstShown && shorts.length >= 1) {
       firstShown = true;
-      renderShortCardsTo(container, shorts.slice(0, 16));
+      renderShortCardsTo(container, shorts.slice(0, FIRST_LIMIT));
       section.classList.remove('hidden');
     } else if (firstShown) {
-      renderShortCardsTo(container, shorts.slice(0, 16));
+      renderShortCardsTo(container, shorts.slice(0, FIRST_LIMIT));
+      if (container2 && section2 && shorts.length > FIRST_LIMIT) {
+        renderShortCardsTo(container2, shorts.slice(FIRST_LIMIT, FIRST_LIMIT + SECOND_LIMIT));
+        section2.classList.remove('hidden');
+      }
     }
   }).catch(() => null));
   await Promise.all(tasks);
   if (shorts.length === 0) return;
-  if (!firstShown) { renderShortCardsTo(container, shorts.slice(0, 16)); section.classList.remove('hidden'); }
-  if (container2 && section2 && shorts.length > 16) {
-    renderShortCardsTo(container2, shorts.slice(16, 36));
+  if (!firstShown) { renderShortCardsTo(container, shorts.slice(0, FIRST_LIMIT)); section.classList.remove('hidden'); }
+  if (container2 && section2 && shorts.length > FIRST_LIMIT) {
+    renderShortCardsTo(container2, shorts.slice(FIRST_LIMIT, FIRST_LIMIT + SECOND_LIMIT));
     section2.classList.remove('hidden');
-  } else if (container2 && section2) {
-    const more = await Promise.all(["新着 #shorts","バズ #shorts","かわいい #shorts"].map(q => fetchFromInvidious(q,"shorts",1).catch(() => null)));
-    const extras = [];
-    for (const m of more) if (m) for (const v of m) {
-      if (!v.videoId || seen.has(v.videoId)) continue;
-      if (v.lengthSeconds < 0 || (v.lengthSeconds > 65 && !v.isShort)) continue;
-      seen.add(v.videoId); extras.push(v);
-      if (extras.length >= 16) break;
-    }
-    if (extras.length > 0) { renderShortCardsTo(container2, extras); section2.classList.remove('hidden'); }
   }
   // 横スクロール動画行を追加で取得
   fetchHomeRowVideos();
@@ -2656,7 +2712,7 @@ async function changeShortStream(type, targetVideoId) {
       wrap.querySelectorAll('video, audio, .short-gv-loading').forEach(el => el.remove());
       const loadingDiv = document.createElement('div');
       loadingDiv.className = 'short-gv-loading';
-      loadingDiv.innerHTML = '<div class="spinner"></div><span style="color:#0f0;font-family:monospace;">🚨 ytdlp取得中...</span>';
+      loadingDiv.innerHTML = '<div class="spinner"></div><span style="color:#fff;">読み込み中...</span>';
       wrap.appendChild(loadingDiv);
     }
     for (const v of currentShortItems) {
@@ -2919,7 +2975,85 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  // Edu キーをアプリ起動時にプリフェッチ → 初回 Edu 切り替えを高速化
+  try { fetchKahootKey().then(k => { if (k) currentEduKey = k; }); } catch(e) {}
+  // 横スクロール領域に自動で矢印ボタンを付与
+  attachHScrollArrows();
 });
+
+// ============ 横スクロール用の自動矢印ボタン ============
+const HSB_TARGET_SELECTORS = [
+  '#categories-bar',
+  '#search-shorts-container',
+  '#home-recommend-grid',
+  '#channel-home-row',
+  '#channel-home-shorts-row',
+  '#channel-tabs-bar',
+  '.channel-row-scroll',
+  '.search-shorts-scroll',
+];
+function _hsbScroll(el, dir) {
+  const amount = Math.max(240, el.clientWidth * 0.8);
+  el.scrollBy({ left: amount * dir, behavior: 'smooth' });
+}
+function _hsbUpdate(el, prev, next) {
+  const max = el.scrollWidth - el.clientWidth - 2;
+  if (max <= 0) { prev.style.display = 'none'; next.style.display = 'none'; return; }
+  prev.style.display = el.scrollLeft > 4 ? 'flex' : 'none';
+  next.style.display = el.scrollLeft < max - 4 ? 'flex' : 'none';
+}
+function _hsbAttach(el) {
+  if (!el || el.dataset.hsbAttached) return;
+  // categories-bar は固定配置 → 直接 body に矢印を追加
+  const isFixed = el.id === 'categories-bar';
+  let host;
+  if (isFixed) {
+    host = el; // 内部に position:fixed の矢印を入れる
+  } else {
+    // 親に position:relative のラッパーを作る
+    if (!el.parentElement) return;
+    if (!el.parentElement.classList.contains('hsb-wrap') && !el.parentElement.classList.contains('h-scroll-wrap')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'hsb-wrap';
+      el.parentElement.insertBefore(wrap, el);
+      wrap.appendChild(el);
+      host = wrap;
+    } else {
+      host = el.parentElement;
+    }
+  }
+  const prev = document.createElement('button');
+  prev.className = 'hsb-arrow prev'; prev.type = 'button'; prev.setAttribute('aria-label','前へ');
+  prev.innerHTML = '<svg viewBox="0 0 24 24"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>';
+  const next = document.createElement('button');
+  next.className = 'hsb-arrow next'; next.type = 'button'; next.setAttribute('aria-label','次へ');
+  next.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>';
+  prev.onclick = (e) => { e.preventDefault(); e.stopPropagation(); _hsbScroll(el, -1); };
+  next.onclick = (e) => { e.preventDefault(); e.stopPropagation(); _hsbScroll(el, 1); };
+  host.appendChild(prev); host.appendChild(next);
+  el.dataset.hsbAttached = '1';
+  const update = () => _hsbUpdate(el, prev, next);
+  el.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('resize', update);
+  // 中身が後から差し込まれるので変化を監視
+  const mo = new MutationObserver(() => setTimeout(update, 50));
+  mo.observe(el, { childList: true, subtree: false });
+  setTimeout(update, 100);
+  setTimeout(update, 800);
+}
+function attachHScrollArrows() {
+  HSB_TARGET_SELECTORS.forEach(sel => {
+    document.querySelectorAll(sel).forEach(_hsbAttach);
+  });
+}
+// 動的に追加された要素にも対応
+const _hsbObserver = new MutationObserver(() => {
+  HSB_TARGET_SELECTORS.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => { if (!el.dataset.hsbAttached) _hsbAttach(el); });
+  });
+});
+document.addEventListener('DOMContentLoaded', () => _hsbObserver.observe(document.body, { childList: true, subtree: true }));
+
  
 function loadTrend() { triggerSearch("人気 日本",'trend'); }
 function handleWelcomeSearch(e) {
@@ -3123,7 +3257,7 @@ async function fetchVideoMetaParallel(videoId, fallbackChannel) {
   const instances = (typeof INVIDIOUS_INSTANCES !== 'undefined' && INVIDIOUS_INSTANCES.length)
     ? INVIDIOUS_INSTANCES.slice(0, 6)
     : ['https://invidious.f5.si','https://yt.omada.cafe','https://inv.nadeko.net'];
-  const tasks = instances.map(inst => fetch(buildFetchUrl(`${inst}/api/v1/videos/${videoId}?fields=title,author,authorId,authorThumbnails,viewCount,likeCount,published,publishedText,description,descriptionHtml`),
+  const tasks = instances.map(inst => fetch(buildFetchUrl(`${inst}/api/v1/videos/${videoId}?fields=title,author,authorId,authorThumbnails,viewCount,likeCount,published,publishedText,description,descriptionHtml&hl=ja&region=JP`),
     { signal: AbortSignal.timeout(7000) })
     .then(r => r.ok ? r.json() : Promise.reject('bad'))
     .then(d => { if (!d || !d.title) throw new Error('empty'); return d; }));
@@ -3404,7 +3538,7 @@ async function backfillHistoryChannel(videoId) {
     const instances = (typeof INVIDIOUS_INSTANCES !== 'undefined' && INVIDIOUS_INSTANCES.length)
       ? INVIDIOUS_INSTANCES.slice(0, 5)
       : ['https://invidious.f5.si','https://yt.omada.cafe','https://inv.nadeko.net'];
-    const tasks = instances.map(inst => fetch(buildFetchUrl(`${inst}/api/v1/videos/${videoId}?fields=title,author,authorThumbnails,viewCount,publishedText`),
+    const tasks = instances.map(inst => fetch(buildFetchUrl(`${inst}/api/v1/videos/${videoId}?fields=title,author,authorThumbnails,viewCount,publishedText&hl=ja&region=JP`),
       { signal: AbortSignal.timeout(6000) })
       .then(r => r.ok ? r.json() : Promise.reject('bad'))
       .then(d => { if (!d || !d.title) throw new Error('empty'); return d; }));
@@ -4005,7 +4139,7 @@ function processCard(card){
   }
 }
 function processAllCards(root){
-  (root||document).querySelectorAll('.video-card, .video-card-h, .related-video, .search-result-item').forEach(processCard);
+  (root||document).querySelectorAll('.video-card, .video-card-h, .related-video, .search-result-item, .home-short-card, .channel-short-card').forEach(processCard);
   // 興味なしフィルタを関連動画にも
   document.querySelectorAll('.related-video').forEach(el => {
     const m = (el.getAttribute('onclick')||'').match(/playVideo\('([a-zA-Z0-9_-]{11})'/);
@@ -4016,8 +4150,8 @@ const _cardObserver = new MutationObserver(muts => {
   for(const m of muts){
     m.addedNodes.forEach(n => {
       if(n.nodeType === 1){
-        if(n.matches && n.matches('.video-card, .video-card-h, .related-video, .search-result-item')) processCard(n);
-        if(n.querySelectorAll) n.querySelectorAll('.video-card, .video-card-h, .related-video, .search-result-item').forEach(processCard);
+        if(n.matches && n.matches('.video-card, .video-card-h, .related-video, .search-result-item, .home-short-card, .channel-short-card')) processCard(n);
+        if(n.querySelectorAll) n.querySelectorAll('.video-card, .video-card-h, .related-video, .search-result-item, .home-short-card, .channel-short-card').forEach(processCard);
       }
     });
   }
