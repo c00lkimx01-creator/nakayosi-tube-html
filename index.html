@@ -673,10 +673,9 @@ input:checked + .slider:before { transform: translateX(20px); }
 .video-card:hover .video-title { text-decoration-color: currentColor; }
 [data-theme="dark"] .video-card:hover .video-title { color: #ff3030; }
 /* チャンネル名も文字の下にだけ下線 */
-.video-meta-channel span { transition: color 0.2s ease, text-decoration-color 0.2s ease; text-decoration: underline 2px transparent; text-underline-offset: 3px; text-decoration-skip-ink: none; cursor: pointer; }
+.video-meta-channel span { transition: color 0.2s ease, text-decoration-color 0.2s ease; text-decoration: underline 2px transparent; text-underline-offset: 3px; text-decoration-skip-ink: none; }
+.video-card:hover .video-meta-channel span { color: var(--text-color); text-decoration-color: currentColor; }
 .video-meta-channel span:hover { color: var(--text-color); text-decoration-color: currentColor; }
-.search-result-channel .search-result-channel-name { transition: color 0.2s ease, text-decoration-color 0.2s ease; text-decoration: underline 2px transparent; text-underline-offset: 3px; }
-.search-result-channel:hover .search-result-channel-name { color: var(--text-color); text-decoration-color: currentColor; }
 
 /* サイトアクセス数 */
 .access-counter {
@@ -4655,7 +4654,6 @@ window.loadTrend = async function(){
     duration: v.lengthSeconds||0,
     published: v.publishedText||'',
     viewCount: v.viewCount||0,
-    viewCountText: v.viewCountText||'',
     publishedTimestamp: v.published||0
   }));
   try {
@@ -4843,7 +4841,6 @@ window.fetchExtraSearch = async function(query){
       duration: v.lengthSeconds||0,
       published: v.publishedText||'',
       viewCount: v.viewCount||0,
-      viewCountText: v.viewCountText||'',
       publishedTimestamp: v.published||0
     };
   }
@@ -5331,116 +5328,6 @@ window.fetchExtraSearch = async function(query){
       }
     }
   } catch(_){}
-})();
-</script>
-
-<script>
-// ===== 0秒前 / 0 seconds ago の動画は実質ライブ配信 → LIVEバッジ化 =====
-(function(){
-  function isZeroAgo(s){
-    if (!s) return false;
-    const t = String(s).trim().toLowerCase().replace(/\s+/g,'');
-    return /^0(秒|second|seconds|sec|s)(前|ago)?$/.test(t) || t === '0秒前' || t === '0secondsago' || t === '0sec' || t === 'justnow' || t === '今';
-  }
-  function promoteLive(v){
-    if (!v) return v;
-    const p = v.published || v.publishedText;
-    if (isZeroAgo(p) || (typeof v.duration === 'number' && v.duration === 0 && (v.lengthSeconds===0||v.lengthSeconds==null) && !v.isShort && p && /秒|sec/.test(String(p)))) {
-      v.isLive = true;
-      v.published = '';
-      v.publishedText = '';
-      v.duration = 0;
-    }
-    return v;
-  }
-  function promoteList(arr){ if (Array.isArray(arr)) arr.forEach(promoteLive); return arr; }
-
-  const targets = ['renderResults','renderChannelLive','renderChannelShorts','renderSearchChannels'];
-  targets.forEach(name => {
-    const orig = window[name];
-    if (typeof orig === 'function') {
-      window[name] = function(videos){
-        if (Array.isArray(videos)) promoteList(videos);
-        return orig.apply(this, arguments);
-      };
-    }
-  });
-
-  // 既に描画済みのカードを後追いで補正（DOMスキャン）
-  function patchExistingCards(){
-    document.querySelectorAll('.video-card, .search-result-item').forEach(card => {
-      if (card.dataset._livePatched) return;
-      const meta = card.querySelector('.video-meta, .search-result-meta');
-      if (!meta) return;
-      const txt = meta.textContent || '';
-      if (!/(^|[^\d])0\s*(秒|seconds?)\s*(前|ago)?/.test(txt)) return;
-      card.dataset._livePatched = '1';
-      // duration-badge を LIVE バッジに置換
-      const thumb = card.querySelector('.thumbnail-container, .search-result-thumb');
-      if (thumb) {
-        thumb.querySelectorAll('.duration-badge, .archived-badge').forEach(b => b.remove());
-        if (!thumb.querySelector('.live-thumb-badge')) {
-          const span = document.createElement('span');
-          span.className = 'live-thumb-badge';
-          span.style.cssText = 'position:absolute;bottom:8px;left:8px;background:#ff0000;color:#fff;font-size:11px;font-weight:bold;padding:3px 6px;border-radius:4px;z-index:2;';
-          span.textContent = '🔴 ライブ配信中';
-          thumb.style.position = thumb.style.position || 'relative';
-          thumb.appendChild(span);
-        }
-      }
-      // meta 行を LIVE 表示に置換
-      meta.innerHTML = '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>';
-    });
-  }
-  // 初回 + MutationObserver で継続監視
-  document.addEventListener('DOMContentLoaded', patchExistingCards);
-  setTimeout(patchExistingCards, 500);
-  const mo = new MutationObserver(() => { patchExistingCards(); });
-  try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_){}
-})();
-</script>
-
-<script>
-// ============ 視聴回数フォールバック + チャンネル下線をホバー時のみに ============
-(function(){
-  function parseViewText(txt){
-    if (!txt) return 0;
-    const s = String(txt).replace(/,/g,'').replace(/\s/g,'');
-    let m;
-    if ((m = s.match(/([\d.]+)\s*億/))) return Math.floor(parseFloat(m[1])*1e8);
-    if ((m = s.match(/([\d.]+)\s*万/))) return Math.floor(parseFloat(m[1])*1e4);
-    if ((m = s.match(/([\d.]+)\s*千/))) return Math.floor(parseFloat(m[1])*1e3);
-    if ((m = s.match(/([\d.]+)\s*B/i))) return Math.floor(parseFloat(m[1])*1e9);
-    if ((m = s.match(/([\d.]+)\s*M/i))) return Math.floor(parseFloat(m[1])*1e6);
-    if ((m = s.match(/([\d.]+)\s*K/i))) return Math.floor(parseFloat(m[1])*1e3);
-    if ((m = s.match(/(\d+)/))) return parseInt(m[1],10);
-    return 0;
-  }
-  window._parseViewText = parseViewText;
-  function wrapRR(){
-    if (typeof window.renderResults !== 'function') return false;
-    const orig = window.renderResults;
-    window.renderResults = function(videos, append){
-      (videos||[]).forEach(v => {
-        if ((!v.viewCount || v.viewCount<=0) && v.viewCountText) {
-          v.viewCount = parseViewText(v.viewCountText);
-        }
-      });
-      return orig(videos, append);
-    };
-    return true;
-  }
-  if (!wrapRR()) { const t=setInterval(()=>{ if (wrapRR()) clearInterval(t); }, 80); setTimeout(()=>clearInterval(t),10000); }
-
-  // 古いCSSキャッシュ対策: カード全体ホバーでは下線を出さず、チャンネル名直接ホバー時のみ
-  const style = document.createElement('style');
-  style.textContent = `
-    .video-card:hover .video-meta-channel span { text-decoration-color: transparent !important; color: var(--text-secondary) !important; }
-    .video-meta-channel span:hover { text-decoration-color: currentColor !important; color: var(--text-color) !important; }
-    .search-result-item:hover .search-result-channel-name { text-decoration-color: transparent !important; color: var(--text-secondary) !important; }
-    .search-result-channel:hover .search-result-channel-name { text-decoration-color: currentColor !important; color: var(--text-color) !important; }
-  `;
-  document.head.appendChild(style);
 })();
 </script>
 
