@@ -652,6 +652,38 @@ input:checked + .slider:before { transform: translateX(20px); }
 .categories-bar .hsb-arrow.next { left: auto; right: 0; background: linear-gradient(270deg, var(--bg-color) 0%, var(--bg-color) 55%, transparent 100%); }
 @media (max-width: 900px) { .categories-bar .hsb-arrow.prev, .sidebar.open ~ .categories-bar .hsb-arrow.prev { left: 0; } }
 
+
+/* === 仲良しTube 追加スタイル === */
+.spinner-ring {
+  display: inline-block; width: 48px; height: 48px;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spinner-rotate 0.9s linear infinite;
+}
+@keyframes spinner-rotate { to { transform: rotate(360deg); } }
+.loader-spinner-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:32px 0; width:100%; }
+.loader-spinner-wrap .loader-text { color: var(--text-secondary); font-size: 13px; }
+
+.video-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+.video-card:hover { transform: translateY(-4px); }
+.video-card:hover .thumbnail-container { box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+.video-card .video-title { transition: color 0.2s ease, border-bottom-color 0.2s ease; border-bottom: 2px solid transparent; padding-bottom: 2px; }
+[data-theme="dark"] .video-card:hover .video-title { color: #ff3030; border-bottom-color: #ff3030; }
+:root:not([data-theme="dark"]) .video-card:hover .video-title,
+html:not([data-theme="dark"]) .video-card:hover .video-title { color: inherit; border-bottom-color: var(--text-color); }
+
+/* サイトアクセス数 */
+.access-counter {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 14px;
+  background: var(--chip-bg); color: var(--text-color);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  margin-right: 8px;
+}
+.access-counter svg { width: 14px; height: 14px; fill: var(--primary-color); }
+@media (max-width: 600px) { .access-counter .ac-label { display:none; } }
+
 </style>
 </head>
 <body>
@@ -684,6 +716,10 @@ input:checked + .slider:before { transform: translateX(20px); }
     </form>
   </div>
   <div class="header-right">
+    <div class="access-counter" id="access-counter" title="サイト累計アクセス数">
+      <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>
+      <span class="ac-label">アクセス</span><span id="access-counter-value">---</span>
+    </div>
     <button class="icon-btn" onclick="toggleTheme()" title="テーマ切り替え">
       <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"></path></svg>
     </button>
@@ -829,6 +865,10 @@ input:checked + .slider:before { transform: translateX(20px); }
             <label class="toggle-switch"><input type="checkbox" id="setting-trend" checked onchange="saveSettings()"><span class="slider"></span></label>
           </div>
           <div class="setting-item">
+            <div class="setting-info"><div class="setting-title">タイムアウトを無効化</div><div style="font-size:12px;color:var(--text-secondary);">遅いインスタンスでも待ち続けます</div></div>
+            <label class="toggle-switch"><input type="checkbox" id="setting-disable-timeout" onchange="toggleDisableTimeout(this.checked)"><span class="slider"></span></label>
+          </div>
+          <div class="setting-item">
             <div class="setting-info"><div class="setting-title">ダークモード</div></div>
             <label class="toggle-switch"><input type="checkbox" id="setting-theme" onchange="toggleThemeFromSettings()"><span class="slider"></span></label>
           </div>
@@ -883,7 +923,7 @@ input:checked + .slider:before { transform: translateX(20px); }
       </div>
     </div>
     <div id="home-grid" class="video-grid"></div>
-    <div id="home-loader" class="loader">動画を読み込み中...</div>
+    <div id="home-loader" class="loader"><div class="loader-spinner-wrap"><div class="spinner-ring"></div><div class="loader-text">動画を読み込み中...</div></div></div>
   </div>
  
   <!-- 検索 -->
@@ -4466,6 +4506,249 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       return r;
     };
+  }
+})();
+</script>
+
+
+<script>
+// ===== タイムアウト無効化（設定） =====
+(function(){
+  try {
+    const orig = AbortSignal.timeout.bind(AbortSignal);
+    AbortSignal.timeout = function(ms){
+      try {
+        if (localStorage.getItem('disableTimeout') === '1') {
+          // 中断しないシグナル
+          return new AbortController().signal;
+        }
+      } catch(e){}
+      return orig(ms);
+    };
+  } catch(e){}
+})();
+window.toggleDisableTimeout = function(v){
+  try { localStorage.setItem('disableTimeout', v ? '1' : '0'); } catch(e){}
+};
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const cb = document.getElementById('setting-disable-timeout');
+    if (cb) cb.checked = localStorage.getItem('disableTimeout') === '1';
+  } catch(e){}
+});
+
+// ===== サムネイル高画質化（プロキシ経由） =====
+window.THUMB_PROXY = 'https://wista-thumb-01.onrender.com/';
+window.getHQThumb = function(id){
+  return window.THUMB_PROXY + 'https://i.ytimg.com/vi/' + id + '/maxresdefault.jpg';
+};
+// 画像のエラー時にプロキシ無し→hqdefault→mqdefaultへフォールバック
+document.addEventListener('error', function(e){
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG') return;
+  const m = (img.src||'').match(/\/vi\/([a-zA-Z0-9_-]{11})\/(maxresdefault|hqdefault|mqdefault)/);
+  if (!m) return;
+  const id = m[1], lvl = m[2];
+  if (img.dataset.thumbFallback) return; // 連続防止
+  if (lvl === 'maxresdefault') {
+    img.dataset.thumbFallback = '1';
+    img.src = 'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg';
+  } else if (lvl === 'hqdefault') {
+    img.dataset.thumbFallback = '2';
+    img.src = 'https://i.ytimg.com/vi/'+id+'/mqdefault.jpg';
+  }
+}, true);
+
+// ===== チャンネル名に www.youtube.com を含む動画は除外 =====
+window.isInvalidChannel = function(name){
+  if (!name) return false;
+  const n = String(name).toLowerCase();
+  return n.includes('www.youtube.com');
+};
+
+// ===== サイトアクセス数 =====
+(async function(){
+  const el = document.getElementById('access-counter-value');
+  if (!el) return;
+  // ローカル累計 + 外部カウンタの大きい方を表示
+  let local = 0;
+  try { local = parseInt(localStorage.getItem('siteAccessCount')||'0',10) + 1; localStorage.setItem('siteAccessCount', String(local)); } catch(e){}
+  el.textContent = local.toLocaleString();
+  try {
+    const r = await fetch('https://abacus.jasoncameron.dev/hit/nakayoshitube.app/visits', { cache: 'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && typeof j.value === 'number') {
+        const max = Math.max(local, j.value);
+        el.textContent = max.toLocaleString();
+      }
+    }
+  } catch(e){}
+})();
+
+// ===== ホーム用：複数InvidiousインスタンスからトレンドAPIと急上昇APIを並列取得 =====
+window.fetchHomeMixed = async function(targetCount){
+  targetCount = targetCount || 20;
+  const pool = (typeof getInvidiousFor === 'function') ? getInvidiousFor('trend') : (window.INVIDIOUS_INSTANCES||[]).slice(0,14);
+  const seen = new Set();
+  const results = [];
+  const tryFetch = (inst, path) => {
+    const url = (typeof buildFetchUrl === 'function' ? buildFetchUrl(inst+path) : inst+path);
+    return fetch(url, { signal: AbortSignal.timeout(4500) })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => Array.isArray(d) ? d : null)
+      .catch(() => null);
+  };
+  const paths = [
+    '/api/v1/trending?region=JP&hl=ja',
+    '/api/v1/trending?region=JP&type=Default&hl=ja',
+    '/api/v1/trending?region=JP&type=Music&hl=ja',
+    '/api/v1/trending?region=JP&type=Gaming&hl=ja',
+    '/api/v1/popular?region=JP&hl=ja',
+    '/api/v1/popular?hl=ja',
+  ];
+  // 全instance x 全path を並列発射
+  const tasks = [];
+  pool.slice(0, 10).forEach(inst => paths.forEach(p => tasks.push(tryFetch(inst, p))));
+  // 早く返ったものから処理
+  await new Promise(resolve => {
+    let remaining = tasks.length;
+    let firstDone = false;
+    tasks.forEach(t => t.then(arr => {
+      if (Array.isArray(arr)) {
+        for (const v of arr) {
+          if (!v || !v.videoId || seen.has(v.videoId)) continue;
+          if (v.lengthSeconds > 0 && v.lengthSeconds <= 61) continue; // Shorts除外
+          if (window.isInvalidChannel(v.author)) continue;
+          seen.add(v.videoId);
+          results.push(v);
+          if (results.length >= targetCount && !firstDone) { firstDone = true; resolve(); }
+        }
+      }
+      if (--remaining <= 0) resolve();
+    }));
+    // 安全装置：最大8秒で終了
+    setTimeout(() => resolve(), 8000);
+  });
+  return results.slice(0, targetCount);
+};
+
+// ===== 新しいloadTrend：高速・重複なし・スピナー表示 =====
+window.loadTrend = async function(){
+  const grid = document.getElementById('home-grid');
+  const loader = document.getElementById('home-loader');
+  if (loader) loader.classList.remove('hidden');
+  if (grid) grid.innerHTML = '';
+  try { if (typeof seenVideoIds !== 'undefined') seenVideoIds.clear(); } catch(e){}
+  const videos = await window.fetchHomeMixed(22);
+  if (!videos.length) {
+    // フォールバック：従来の検索ベースで取得
+    try { if (typeof triggerSearch === 'function') triggerSearch('人気 日本','trend'); } catch(e){}
+    return;
+  }
+  const mapped = videos.map(v => ({
+    id: v.videoId,
+    title: v.title,
+    channel: v.author,
+    isShort: false,
+    isLive: v.liveNow||false,
+    authorThumb: v.authorThumbnails && v.authorThumbnails[0] ? v.authorThumbnails[0].url : ('https://i.pravatar.cc/150?u='+encodeURIComponent(v.author||'')),
+    duration: v.lengthSeconds||0,
+    published: v.publishedText||'',
+    viewCount: v.viewCount||0,
+    publishedTimestamp: v.published||0
+  }));
+  try {
+    if (typeof searchContext !== 'undefined') searchContext = 'trend';
+    if (typeof renderResults === 'function') renderResults(mapped, false);
+    else if (grid) {
+      // 直接描画フォールバック
+      grid.innerHTML = mapped.map(v => `<div class="video-card" onclick="playVideo('${v.id}','${(v.title||'').replace(/'/g,"\\'")}','${(v.channel||'').replace(/'/g,"\\'")}','${v.authorThumb}')">
+        <div class="thumbnail-container"><img src="${window.getHQThumb(v.id)}" loading="lazy"></div>
+        <div class="video-info"><div class="video-details"><div class="video-title">${v.title||''}</div><div class="video-meta-channel"><span>${v.channel||''}</span></div></div></div>
+      </div>`).join('');
+    }
+    if (loader) loader.classList.add('hidden');
+  } catch(e) { console.error(e); }
+  // Shortsとおすすめも継続して読み込む
+  try { if (typeof fetchShortsForHome === 'function') fetchShortsForHome(); } catch(e){}
+  try { if (typeof loadRecommendations === 'function') loadRecommendations(); } catch(e){}
+};
+
+// ===== 検索：min-pro.duckdns.org/api/search を追加 =====
+window.fetchExtraSearch = async function(query){
+  try {
+    const r = await fetch('https://min-pro.duckdns.org/api/search?q='+encodeURIComponent(query), { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return [];
+    const d = await r.json();
+    const arr = Array.isArray(d) ? d : (d.results || d.items || d.videos || []);
+    return arr.map(v => ({
+      type: 'video',
+      videoId: v.videoId || v.id || v.video_id,
+      title: v.title || v.name,
+      author: v.author || v.channel || v.uploader,
+      authorThumbnails: v.authorThumbnails || (v.channelThumbnail ? [{url:v.channelThumbnail}] : null),
+      lengthSeconds: v.lengthSeconds || v.duration || 0,
+      viewCount: v.viewCount || v.views || 0,
+      publishedText: v.publishedText || v.published || '',
+      published: v.publishedTimestamp || 0,
+      liveNow: v.liveNow || false
+    })).filter(x => x.videoId && !window.isInvalidChannel(x.author));
+  } catch(e) { return []; }
+};
+
+// fetchFromInvidiousをラップして、search時に外部APIの結果もマージ
+(function(){
+  if (typeof window.fetchFromInvidious !== 'function') {
+    // 元関数が読み込まれた後にラップ
+    const obs = setInterval(() => {
+      if (typeof window.fetchFromInvidious === 'function') {
+        clearInterval(obs);
+        wrap();
+      }
+    }, 50);
+  } else wrap();
+  function wrap(){
+    const orig = window.fetchFromInvidious;
+    window.fetchFromInvidious = async function(query, context, page){
+      if (context === 'search') {
+        const [inv, extra] = await Promise.all([
+          orig(query, context, page).catch(()=>null),
+          (page===1?window.fetchExtraSearch(query):Promise.resolve([]))
+        ]);
+        const out = [];
+        const seen = new Set();
+        (extra||[]).forEach(v => { if (v.videoId && !seen.has(v.videoId)) { seen.add(v.videoId); out.push(v); } });
+        (inv||[]).forEach(v => { if (v && v.videoId && !seen.has(v.videoId)) { seen.add(v.videoId); out.push(v); } });
+        return out.length ? out : (inv||null);
+      }
+      return orig(query, context, page);
+    };
+  }
+})();
+
+// ===== renderResultsをラップ：www.youtube.com含むチャンネルを除外、サムネを高画質に差し替え =====
+(function(){
+  const apply = () => {
+    if (typeof window.renderResults !== 'function') return false;
+    const orig = window.renderResults;
+    window.renderResults = function(videos, append){
+      const filtered = (videos||[]).filter(v => !window.isInvalidChannel(v.channel));
+      const ret = orig(filtered, append);
+      // 描画後にサムネを差し替え
+      try {
+        document.querySelectorAll('.video-card .thumbnail-container img, .home-row-scroll img, .recommend-scroll img').forEach(img => {
+          const m = (img.src||'').match(/\/vi\/([a-zA-Z0-9_-]{11})\/mqdefault\.jpg/);
+          if (m && !img.dataset.hq) { img.dataset.hq='1'; img.src = window.getHQThumb(m[1]); }
+        });
+      } catch(e){}
+      return ret;
+    };
+    return true;
+  };
+  if (!apply()) {
+    const t = setInterval(() => { if (apply()) clearInterval(t); }, 80);
+    setTimeout(() => clearInterval(t), 10000);
   }
 })();
 </script>
