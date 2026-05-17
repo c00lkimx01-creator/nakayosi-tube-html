@@ -5261,6 +5261,10 @@ window.fetchExtraSearch = async function(query){
   if (typeof window.fetchFromInvidious === 'function') {
     const _origFFI = window.fetchFromInvidious;
     window.fetchFromInvidious = async function(query, context, page){
+      // ユーザー要求: 検索結果は Invidious または Min-Pro のみで取得 (Pipedはスキップ)
+      if (context === 'search') {
+        return await _origFFI(query, context, page).catch(()=>null);
+      }
       const invP = _origFFI(query, context, page).catch(()=>null);
       if (context === 'shorts' || context === 'channel-videos' || context === 'channel-home') {
         // Pipedの検索結果は精度が低いので、これらは Invidious 優先
@@ -5600,7 +5604,9 @@ window.fetchExtraSearch = async function(query){
     if (window.__patchedProviderRouter) return true;
     window.__patchedProviderRouter = true;
     window.fetchFromInvidious = async function(query, context, page){
-      const order = getOrder();
+      // ユーザー要求: 検索 (context==='search') は Invidious / Min-Pro のみ使用 (Pipedはスキップ)
+      let order = getOrder();
+      if (context === 'search') order = order.filter(k => k === 'invidious' || k === 'minpro');
       const tasks = order.map(k => (PROVIDERS[k] ? PROVIDERS[k](query, context, page).catch(()=>null) : Promise.resolve(null)));
       const results = await Promise.allSettled(tasks);
       const out = [];
