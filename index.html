@@ -1355,6 +1355,7 @@ function _splitInstances(arr, n) {
   arr.forEach((x,i) => out[i%n].push(x));
   return out;
 }
+try { window.INVIDIOUS_INSTANCES = INVIDIOUS_INSTANCES; } catch(_) {}
 const _INV_GROUPS = _splitInstances(INVIDIOUS_INSTANCES, 5);
 const INVIDIOUS_ROLES = {
   trend:   _INV_GROUPS[0].concat(_INV_GROUPS[1]).slice(0, 14),  // ホーム/トレンド
@@ -5548,24 +5549,42 @@ window.fetchExtraSearch = async function(query){
   window.getApiProviderOrder = getOrder;
 
   /* ---------- 4) 各プロバイダの取得関数を統一 ---------- */
+  // CORS制限回避: 直接 + 複数CORSプロキシ を並列レース
+  const INV_CORS_WRAPPERS = [
+    (u) => u,
+    (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u),
+    (u) => 'https://cors.eu.org/' + u,
+  ];
   async function callInvidious(query, context, page){
-    // 元の fetchFromInvidious (Pipedラップ前) を持っていないので、Invidious単独パスを直接呼ぶ
-    const pool = sortInvBySuccess((window.INVIDIOUS_INSTANCES||[]).slice());
+    const base = (Array.isArray(window.INVIDIOUS_INSTANCES) && window.INVIDIOUS_INSTANCES.length)
+      ? window.INVIDIOUS_INSTANCES.slice()
+      : (typeof INVIDIOUS_INSTANCES !== 'undefined' ? INVIDIOUS_INSTANCES.slice() : []);
+    const preferred = ['https://lekker.gay','https://iv.melmac.space','https://invidious.materialio.us','https://y.com.sb','https://invidious.f5.si','https://yt.omada.cafe'];
+    const pool = Array.from(new Set([...preferred, ...sortInvBySuccess(base)])).slice(0, context === 'search' ? 32 : 12);
     const paths = (context==='trend')
-      ? ['/api/v1/popular?region=JP&hl=ja','/api/v1/trending?region=JP&hl=ja','/api/v1/popular?hl=ja']
+      ? ['/api/v1/popular?region=JP&hl=ja','/api/v1/trending?region=JP&hl=ja']
       : ['/api/v1/search?q='+encodeURIComponent(query)+'&page='+(page||1)+'&hl=ja&region=JP'];
-    for (const inst of pool.slice(0,10)) {
+    const tasks = [];
+    for (const inst of pool) {
       for (const p of paths) {
-        try {
-          const url = (typeof buildFetchUrl==='function'?buildFetchUrl(inst+p):inst+p);
-          const r = await _origFetch(url, { signal: AbortSignal.timeout(4500) });
-          if (!r || !r.ok) continue;
-          const d = await r.json();
-          if (Array.isArray(d) && d.length) return d;
-        } catch(_){}
+        const target = inst.replace(/\/$/,'') + p;
+        for (const wrap of INV_CORS_WRAPPERS) {
+          const url = wrap(target);
+          tasks.push((async () => {
+            const r = await _origFetch(url, { signal: AbortSignal.timeout(8000), headers: { 'Accept': 'application/json' } });
+            if (!r || !r.ok) throw new Error('bad');
+            const ct = (r.headers && r.headers.get && r.headers.get('content-type')) || '';
+            const d = ct.includes('json') ? await r.json() : JSON.parse(await r.text());
+            if (!Array.isArray(d) || !d.length) throw new Error('empty');
+            return d;
+          })());
+        }
       }
     }
-    return null;
+    if (!tasks.length) return null;
+    try { return await Promise.any(tasks); } catch(_) { return null; }
   }
   async function callPiped(query, context, page){
     if (context==='trend' && typeof window.fetchPipedTrending==='function') return await window.fetchPipedTrending();
@@ -5606,7 +5625,11 @@ window.fetchExtraSearch = async function(query){
     window.fetchFromInvidious = async function(query, context, page){
       // ユーザー要求: 検索 (context==='search') は Invidious / Min-Pro のみ使用 (Pipedはスキップ)
       let order = getOrder();
-      if (context === 'search') order = order.filter(k => k === 'invidious' || k === 'minpro');
+      if (context === 'search') {
+        order = order.filter(k => k === 'invidious' || k === 'minpro');
+        if (!order.includes('invidious')) order.unshift('invidious');
+        if (!order.includes('minpro')) order.push('minpro');
+      }
       const tasks = order.map(k => (PROVIDERS[k] ? PROVIDERS[k](query, context, page).catch(()=>null) : Promise.resolve(null)));
       const results = await Promise.allSettled(tasks);
       const out = [];
