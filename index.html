@@ -758,7 +758,7 @@ input:checked + .slider:before { transform: translateX(20px); }
       <span id="access-counter-value">---</span>
     </div>
     <div class="access-counter" id="app-version-badge" title="バージョン">
-      <span class="ac-label">ver 1.7</span>
+      <span class="ac-label">ver 1.7.1</span>
     </div>
     <button class="icon-btn" onclick="toggleTheme()" title="テーマ切り替え">
       <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"></path></svg>
@@ -3108,6 +3108,20 @@ function formatTimestamp(ts) {
   const d = new Date(ts*1000);
   return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
+function formatRelativeJa(ts) {
+  if (!ts || ts === 0) return '';
+  const now = Date.now()/1000;
+  let diff = now - ts;
+  if (diff < 0) diff = 0;
+  if (diff < 60) return `${Math.max(1,Math.floor(diff))}秒前`;
+  if (diff < 3600) return `${Math.floor(diff/60)}分前`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}時間前`;
+  if (diff < 604800) return `${Math.floor(diff/86400)}日前`;
+  if (diff < 2592000) return `${Math.floor(diff/604800)}週間前`;
+  if (diff < 31536000) return `${Math.floor(diff/2592000)}か月前`;
+  return `${Math.floor(diff/31536000)}年前`;
+}
+window.formatRelativeJa = formatRelativeJa;
 function renderResults(videos, append = false) {
   if (searchContext === 'related') { renderRelatedVideos(videos, append); return; }
   if (searchContext === 'shorts') { renderShorts(videos, append); return; }
@@ -3131,8 +3145,9 @@ function renderResults(videos, append = false) {
     const isLive = v.isLive || (v.title && (v.title.includes('ライブ')||v.title.includes('LIVE')||v.title.includes('live')||v.title.includes('配信')));
     const isArchived = v.isArchived||false;
     const durStr = formatDuration(v.duration), dateStr = v.publishedTimestamp ? formatTimestamp(v.publishedTimestamp) : '';
+    const relStr = v.publishedTimestamp ? formatRelativeJa(v.publishedTimestamp) : (v.published||'');
     card.onclick = () => playVideo(v.id, v.title, v.channel, v.authorThumb);
-    card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${v.isLive ? '<span class="live-thumb-badge">🔴 配信中</span>' : isArchived ? `<span class="archived-badge">📅 配信済み${dateStr ? ' '+dateStr : ''}</span>` : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta-channel"><span style="cursor:pointer;" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')">${v.channel}</span></div><div class="video-meta">${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived && dateStr ? `<span>${dateStr} 配信済み</span>` : `${v.viewCount ? `<span>${formatViews(v.viewCount)}</span>` : ''}${v.published ? `<span>・ ${v.published}</span>` : ''}`}</div></div></div>`;
+    card.innerHTML = `<div class="thumbnail-container"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${v.isLive ? '<span class="live-thumb-badge">🔴 ライブ</span>' : isArchived ? `<span class="archived-badge">📅 ${relStr?relStr+'に':''}配信済み</span>` : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="video-info"><div class="channel-avatar" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><div class="video-details"><div class="video-title">${v.title}</div><div class="video-meta-channel"><span style="cursor:pointer;" onclick="event.stopPropagation(); openChannel('${v.channel.replace(/'/g,"\\'")}','${v.authorThumb}')">${v.channel}</span></div><div class="video-meta">${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived ? `<span>${relStr?relStr+'に':''}配信済み</span>` : `${v.viewCount ? `<span>${formatViews(v.viewCount)}</span>` : ''}${v.published ? `<span>・ ${v.published}</span>` : ''}`}</div></div></div>`;
     container.appendChild(card);
   });
   document.getElementById('home-loader')?.classList.add('hidden');
@@ -3187,9 +3202,10 @@ function renderSearchResults(videos, append = false) {
     const item = document.createElement('div'); item.className = 'search-result-item';
     const isLive = v.isLive || (v.title && (v.title.includes('ライブ')||v.title.includes('LIVE')||v.title.includes('live')||v.title.includes('配信')));
     const isArchived = v.isArchived||false, durStr = formatDuration(v.duration), dateStr = v.publishedTimestamp ? formatTimestamp(v.publishedTimestamp) : '';
+    const relStr = v.publishedTimestamp ? formatRelativeJa(v.publishedTimestamp) : (v.published||'');
     const channelSafe = v.channel.replace(/'/g,"\\'");
     item.onclick = () => playVideo(v.id, v.title, v.channel, v.authorThumb);
-    item.innerHTML = `<div class="search-result-thumb"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${v.isLive ? '<span class="live-thumb-badge">🔴 配信中</span>' : isArchived ? '<span class="archived-badge">📅 配信済み</span>' : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="search-result-info"><div class="search-result-title">${v.title}</div><div class="search-result-meta">${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived && dateStr ? `<span>${dateStr} 配信済み</span>` : (durStr ? `<span>${durStr}</span>` : '')}${!v.isLive && v.published ? `<span>• ${v.published}</span>` : ''}</div><div class="search-result-channel" onclick="event.stopPropagation(); openChannel('${channelSafe}','${v.authorThumb}')"><div class="search-result-channel-icon"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><span class="search-result-channel-name">${v.channel}</span></div></div>`;
+    item.innerHTML = `<div class="search-result-thumb"><img src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" loading="lazy" decoding="async">${v.isLive ? '<span class="live-thumb-badge">🔴 ライブ</span>' : isArchived ? `<span class="archived-badge">📅 ${relStr?relStr+'に':''}配信済み</span>` : (durStr ? `<span class="duration-badge">${durStr}</span>` : '')}</div><div class="search-result-info"><div class="search-result-title">${v.title}</div><div class="search-result-meta">${v.isLive ? '<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>' : isArchived ? `<span>${relStr?relStr+'に':''}配信済み</span>` : (durStr ? `<span>${durStr}</span>` : '')}${!v.isLive && v.published ? `<span>• ${v.published}</span>` : ''}</div><div class="search-result-channel" onclick="event.stopPropagation(); openChannel('${channelSafe}','${v.authorThumb}')"><div class="search-result-channel-icon"><img src="${v.authorThumb}" loading="lazy" decoding="async"></div><span class="search-result-channel-name">${v.channel}</span></div></div>`;
     container.appendChild(item);
   });
   document.getElementById('search-loader')?.classList.add('hidden');
@@ -3287,12 +3303,66 @@ window.addEventListener('scroll', () => {
 document.addEventListener('DOMContentLoaded', () => {
   const sfp = document.getElementById('shorts-full-page');
   if (sfp) {
+    const SHORT_QUERIES = ["人気","おすすめ","話題","面白い","かわいい","急上昇","新着","バズ","公式","ダンス","料理","ゲーム","アニメ","音楽","スポーツ","旅行","ペット","コメディ"];
+    let _shortQIdx = 0;
+    window._loadMoreShorts = async function(){
+      if (window.__shortsLoadingMore) return;
+      window.__shortsLoadingMore = true;
+      const loader = document.getElementById('shorts-loader');
+      if (loader) loader.classList.remove('hidden');
+      try {
+        // 直接 fetchFromInvidious を呼んで append描画 (triggerSearch の isFetching ロックを回避)
+        const tries = 4;
+        const seen = new Set(Array.from(document.querySelectorAll('#shorts-container .short-snap-item')).map(el => el.dataset.id).filter(Boolean));
+        let added = 0;
+        for (let i=0; i<tries && added < 6; i++) {
+          const q = SHORT_QUERIES[(_shortQIdx++) % SHORT_QUERIES.length];
+          const data = await (window.fetchFromInvidious ? window.fetchFromInvidious(q, 'shorts', 1).catch(()=>null) : null);
+          if (!data || !data.length) continue;
+          const fresh = [];
+          for (const item of data) {
+            if (!item || item.type !== 'video' || !item.videoId) continue;
+            if (seen.has(item.videoId)) continue;
+            if (item.lengthSeconds && item.lengthSeconds > 65) continue;
+            seen.add(item.videoId);
+            fresh.push({
+              id: item.videoId, title: item.title, channel: item.author||'',
+              isShort: true,
+              authorThumb: item.authorThumbnails ? item.authorThumbnails[0].url : ('https://i.pravatar.cc/80?u='+encodeURIComponent(item.author||'')),
+              duration: item.lengthSeconds||0,
+              published: item.publishedText||'',
+              viewCount: item.viewCount||0
+            });
+            if (fresh.length >= 8) break;
+          }
+          if (fresh.length && typeof renderShorts === 'function') {
+            renderShorts(fresh, true);
+            added += fresh.length;
+          }
+        }
+      } catch(e) {}
+      if (loader) loader.classList.add('hidden');
+      window.__shortsLoadingMore = false;
+    };
     sfp.addEventListener('scroll', () => {
-      if (sfp.scrollTop + sfp.clientHeight >= sfp.scrollHeight - 400 && !isFetching) {
-        document.getElementById('shorts-loader').classList.remove('hidden');
-        triggerSearch("#shorts",'shorts',true);
+      if (sfp.scrollTop + sfp.clientHeight >= sfp.scrollHeight - 600) {
+        window._loadMoreShorts();
       }
-    });
+    }, { passive: true });
+    // ショート画面を開いた直後に、下の動画が空にならないよう即プリロード
+    const _origNav = window.navigate;
+    if (typeof _origNav === 'function') {
+      window.navigate = function(viewName, opts){
+        const r = _origNav.apply(this, arguments);
+        if (viewName === 'shorts') {
+          setTimeout(() => {
+            const cnt = document.querySelectorAll('#shorts-container .short-snap-item').length;
+            if (cnt < 4) window._loadMoreShorts();
+          }, 400);
+        }
+        return r;
+      };
+    }
   }
   // Edu キーをアプリ起動時にプリフェッチ → 初回 Edu 切り替えを高速化
   try { fetchKahootKey().then(k => { if (k) currentEduKey = k; }); } catch(e) {}
@@ -6513,6 +6583,47 @@ window.fetchExtraSearch = async function(query){
       try { return await _orig(query, context, page); } catch(_) { return null; }
     };
   }
+})();
+</script>
+
+<script>
+// ===== 成功率の高いインスタンスを先頭に並べ替えて最速で取得 =====
+(function(){
+  function scoreHost(host){
+    try {
+      const s = (window._apiStats||{})[host];
+      if (!s) return 0.5; // 未計測は中立
+      const total = (s.ok||0) + (s.fail||0);
+      if (total < 3) return 0.6; // サンプル不足は少し優遇
+      return (s.ok||0) / total;
+    } catch(e){ return 0.5; }
+  }
+  function hostOf(u){ try { return new URL(u, location.href).host; } catch(e){ return ''; } }
+  function sortByScore(list){
+    return list.slice().sort((a,b) => scoreHost(hostOf(b)) - scoreHost(hostOf(a)));
+  }
+  // getInvidiousFor をラップ → 成功率順 → 既存のユーザー優先順位は applyPriority が別途処理
+  if (typeof window.getInvidiousFor === 'function') {
+    const _orig = window.getInvidiousFor;
+    window.getInvidiousFor = function(role){
+      const arr = _orig(role) || [];
+      return sortByScore(arr);
+    };
+  }
+  // INVIDIOUS_INSTANCES 自体も先頭に高成功率を寄せる(検索パス用)
+  try {
+    if (Array.isArray(window.INVIDIOUS_INSTANCES)) {
+      window.INVIDIOUS_INSTANCES = sortByScore(window.INVIDIOUS_INSTANCES);
+    }
+  } catch(e){}
+  // 定期的に再ソート(統計が増えた後の最適化)
+  setInterval(() => {
+    try {
+      if (Array.isArray(window.INVIDIOUS_INSTANCES)) {
+        window.INVIDIOUS_INSTANCES = sortByScore(window.INVIDIOUS_INSTANCES);
+      }
+    } catch(e){}
+  }, 15000);
 })();
 </script>
 </body>
