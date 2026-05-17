@@ -470,7 +470,7 @@ main.sidebar-open .shorts-full-page { left: 240px; }
 .comment-avatar { width: 40px; height: 40px; border-radius: 50%; background: #eee; flex-shrink: 0; }
 .comment-body { flex: 1; }
  
-.loader { text-align: center; padding: 40px; color: var(--text-secondary); font-weight: bold; width: 100%; }
+.loader { text-align: center; padding: 22px; color: var(--text-secondary); font-weight: 500; font-size: 13px; width: 100%; }
 .hidden { display: none !important; }
 #hidden-cse-container { display: none; background: white; padding: 20px; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 10px; }
  
@@ -655,15 +655,15 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 /* === 仲良しTube 追加スタイル === */
 .spinner-ring {
-  display: inline-block; width: 48px; height: 48px;
+  display: inline-block; width: 36px; height: 36px;
   border: 4px solid var(--border-color);
   border-top-color: var(--primary-color);
   border-radius: 50%;
   animation: spinner-rotate 0.9s linear infinite;
 }
 @keyframes spinner-rotate { to { transform: rotate(360deg); } }
-.loader-spinner-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:32px 0; width:100%; }
-.loader-spinner-wrap .loader-text { color: var(--text-secondary); font-size: 13px; }
+.loader-spinner-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:18px 0; width:100%; }
+.loader-spinner-wrap .loader-text { color: var(--text-secondary); font-size: 12px; }
 
 .video-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
 .video-card:hover { transform: translateY(-4px); }
@@ -720,9 +720,12 @@ input:checked + .slider:before { transform: translateX(20px); }
     </form>
   </div>
   <div class="header-right">
-    <div class="access-counter" id="access-counter" title="サイト累計アクセス数">
-      <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>
-      <span class="ac-label">アクセス</span><span id="access-counter-value">---</span>
+    <div class="access-counter" id="access-counter" style="display:none !important;">
+      <span id="access-counter-value">---</span>
+    </div>
+    <div class="access-counter" id="api-success-rate" title="API成功率（直近）">
+      <svg viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+      <span class="ac-label">成功率</span><span id="api-success-rate-value">--%</span>
     </div>
     <button class="icon-btn" onclick="toggleTheme()" title="テーマ切り替え">
       <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"></path></svg>
@@ -1263,19 +1266,86 @@ let currentChannelShortsPage = 1;
 let currentChannelShortsName = '';
  
 const INVIDIOUS_INSTANCES = [
-  'https://invidious.f5.si','https://yt.omada.cafe','https://inv.thepixora.com',
-  'https://yawtu.be','https://inv.nadeko.net','https://iv.duti.dev','https://inv.vern.cc',
-  'https://invidious.privacyredirect.com','https://inv1.nadeko.net','https://inv2.nadeko.net',
-  'https://inv3.nadeko.net','https://inv4.nadeko.net','https://inv5.nadeko.net',
-  'https://yewtu.be','https://invidious.garudalinux.org','https://invidious.tiekoetter.com',
-  'https://yt.artemislena.eu','https://invidious.privacydev.net','https://invidious.nerdvpn.de',
-  'https://invidious.lunar.icu','https://invidious.slipfox.xyz','https://iv.ggtyler.dev',
-  'https://nyc1.iv.ggtyler.dev','https://cal1.iv.ggtyler.dev','https://iv.catgirl.cloud',
-  'https://invidious.sethforprivacy.com','https://invidious.weblibre.org','https://invidious.pufe.org',
-  'https://invidious.projectsegfau.lt','https://invidious.fdn.fr','https://invidious.epicsite.xyz',
-  'https://yt.funami.tech','https://invidious.esmailelbob.xyz','https://invidious.drivet.xyz',
-  'https://invidious.flokinet.to','https://invidious.rhyshl.live','https://invidious.perennialte.ch',
-  'https://invidious.private.coffee','https://inv.privacy.com.de','https://iv.nboeck.de'
+  'https://id.420129.xyz', 'https://invidious.io', 'https://redirect.invidious.io',
+  'https://invidious.snopyta.org', 'https://invidious.kavin.rocks', 'https://iv.ggtyler.dev',
+  'https://invidious.materialio.us', 'https://invidious.lunivers.trade', 'https://nyc1.iv.ggtyler.dev',
+  'https://lekker.gay', 'https://usa-proxy.poketube.fun', 'https://usa-proxy2.poketube.fun',
+  'https://iv.duti.dev', 'https://pol1.iv.ggtyler.dev', 'https://youtube.mosesmang.com',
+  'https://iteroni.com', 'https://invidious.0011.lt', 'https://iv.melmac.space',
+  'https://rust.oskamp.nl', 'https://invid-api.poketube.fun', 'https://invidious.f5.si',
+  'https://eu-proxy.poketube.fun', 'https://cal1.iv.ggtyler.dev', 'https://siawaseok-wakame-server2.glitch.me',
+  'https://invidious.nietzospannend.nl', 'https://yewtu.be', 'https://vid.puffyan.us',
+  'https://wataamee.glitch.me', 'https://heddohondayo.glitch.me', 'https://youtube-googlevideo.glitch.me',
+  'https://natural-voltaic-titanium.glitch.me', 'https://wtserver1.glitch.me', 'https://wtserver2.glitch.me',
+  'https://wtserver3.glitch.me', 'https://watawata8.glitch.me', 'https://watawata7.glitch.me',
+  'https://watawata37.glitch.me', 'https://watawatawata.glitch.me', 'https://amenable-charm-lute.glitch.me',
+  'https://battle-deciduous-bear.glitch.me', 'https://productive-noon-van.glitch.me', 'https://balsam-secret-fine.glitch.me',
+  'https://eviter-server.glitch.me', 'https://eviter-server-2.glitch.me', 'https://youtube.privacyplz.org',
+  'https://inv.zzls.xyz', 'https://invidious.einfachzocken.eu', 'https://piped.video',
+  'https://cuddly.tube', 'https://safetwitch.darkness.services', 'https://piped.reallyaweso.me',
+  'https://invidious.nerdvpn.de', 'https://inv1.nadeko.net', 'https://inv2.nadeko.net',
+  'https://inv3.nadeko.net', 'https://inv4.nadeko.net', 'https://inv5.nadeko.net',
+  'https://invidioys.lunivers.trade', 'https://invidious.schenkel.eti.br', 'https://y.com.sb',
+  'https://invidious.ritoge.com', 'https://invididious.exma.de', 'https://raagstream.us.kg',
+  'https://youtube.alt.tyil.nl', 'https://yt.cdsp.cz', 'https://inv.antopie.org',
+  'https://invidious.baczek.me', 'https://invidious.jing.rocks', 'https://inv.vern.cc',
+  'https://invi.susurrando.com', 'https://invidious.epicsite.xyz', 'https://invidious.esmailelbob.xyz',
+  'https://invidious.garudalinux.org', 'https://invidious.lidarshield.cloud', 'https://invidious.lunar.icu',
+  'https://yt-us.discard.no', 'https://invidious.privacydev.net', 'https://invidious.sethforprivacy.com',
+  'https://invidious.slipfox.xyz', 'https://yt-no.discard.no', 'https://invidious.tiekoetter.com',
+  'https://invidious.vpsburti.com', 'https://invidious.weblibre.org', 'https://invidious.pufe.org',
+  'https://watch.thekitty.zone', 'https://youtube.moe.ngo', 'https://yt.31337.one',
+  'https://yt.funami.tech', 'https://yt.oelrichsgarcia.de', 'https://yt.wkwkwk.fun',
+  'https://youtube.076.ne.jp', 'https://invidious.projectsegfau.lt', 'https://invidious.fdn.fr',
+  'https://i.oyster.men', 'https://invidious.domain.glass', 'https://inv.skrep.eu',
+  'https://clips.im.allmendenetz.de', 'https://ytb.trom.tf', 'https://invidious.pcgamingfreaks.at',
+  'https://youtube.notrack.ch', 'https://iv.ok0.org', 'https://youtube.vpn-home-net.de',
+  'https://invidious.citizen4.eu', 'https://yt.sebaorrego.net', 'https://invidious.pesso.al',
+  'https://invidious.manasiwibi.com', 'https://toob.unternet.org', 'https://invidious.varishangout.net',
+  'https://invidio.xamh.de', 'https://yt.tesaguri.club', 'https://video.francevpn.fr',
+  'https://inv.in.projectsegfau.lt', 'https://invid.nevaforget.de', 'https://tube.foss.wtf',
+  'https://invidious.777.tf', 'https://inv.tux.pizza', 'https://invidious.osi.kr',
+  'https://inv.riverside.rocks', 'https://inv.bp.mutahar.rocks', 'https://invidious.namazso.eu',
+  'https://tube.cthd.icu', 'https://invidious.privacy.gd', 'https://invidious-us.kavin.rocks',
+  'https://invidious.mutahar.rocks', 'https://invidious.zee.li', 'https://tube.connect.cafe',
+  'https://invidious.zapashcanon.fr', 'https://invidious.poast.org', 'https://invidious.froth.zone',
+  'https://invidious.sp-codes.de', 'https://yt.512mb.org', 'https://tube.meowz.moe',
+  'https://invidious.frbin.com', 'https://dev.invidio.us', 'https://invidious.site',
+  'https://invidious.stemy.me', 'https://betamax.cybre.club', 'https://invidious.com',
+  'https://invidious.not.futbol', 'https://yt.artemislena.eu', 'https://invidious.dhusch.de',
+  'https://inv.odyssey346.dev', 'https://nosebs.ru', 'https://adminforge.de',
+  'https://piped.yt', 'https://drgns.space', 'https://ducks.party',
+  'https://reallyaweso.me', 'https://private.coffee', 'https://orangenet.cc',
+  'https://inv.trolling.dev', 'https://invidious.drivet.xyz', 'https://invidious.flokinet.to',
+  'https://invidious.marcopisco.com', 'https://invidious.rhyshl.live', 'https://invidious.silur.me',
+  'https://vid.priv.au', 'https://invidious.vern.cc', 'https://invidious.grimneko.de',
+  'https://invidious.chunboan.zone', 'https://invidious.ethibox.fr', 'https://invidious.onion.love',
+  'https://iv.catgirl.cloud', 'https://subscriptions.gir.st', 'https://vro.omcat.info',
+  'https://video.weiler.rocks', 'https://yt.thechangebook.org', 'https://yt.leverenz.email',
+  'https://yt.beparanoid.de', 'https://monocles.live', 'https://youtube.it-service-schopfheim.de',
+  'https://invidious.2br02b.live', 'https://discordjp.cc', 'https://invidious.longtime.duckdns.org',
+  'https://test.invidious.io', 'https://ytclient.antaresx.ch', 'https://youtube.noogle.gay',
+  'https://youtube.stowwe.pw', 'https://inv.us.projectsegfau.lt', 'https://youtube.longtime.duckdns.org',
+  'https://invidious.myachin.xyz', 'https://tube.mha.fi', 'https://inv.frail.duckdns.org',
+  'https://invidious.fi', 'https://inv.pistasjis.net', 'https://yt.vern.cc',
+  'https://yt.yoc.ovh', 'https://invidious.rndsh.it', 'https://yt.femboy.hu',
+  'https://invidious.pussthecat.org', 'https://invidious.qwik.space', 'https://youtube.lurkmore.com',
+  'https://tube.netflux.io', 'https://invidious.nantuapan.loginto.me', 'https://ytb.alexio.tf',
+  'https://invidious.instance.no', 'https://in.fnky.nz', 'https://yt.floss.media',
+  'https://invidious.nogafa.org', 'https://invidious.lukgth.cloud', 'https://tv.metaversum.wtf',
+  'https://invidious.palejev.dscloud.me', 'https://invidious.notraxx.ch', 'https://yt.tjm.sk',
+  'https://super8.absturztau.be', 'https://invidious.zxspectrummail.net', 'https://ytb.best-server.info',
+  'https://inv.citw.lgbt', 'https://invidious.protokolla.fi', 'https://iv.fmac.xyz',
+  'https://not-ytb.blocus.ch', 'https://onion.tube', 'https://yt.fascinated.cc',
+  'https://invidious.zecircle.xyz', 'https://inv.qilk.de', 'https://inv.kamuridesu.com',
+  'https://invidious.catspeed.cc', 'https://inv.owo.si', 'https://invidious.nikkosphere.com',
+  'https://iv.datura.network', 'https://invidious.private.coffee', 'https://invidious.perennialte.ch',
+  'https://yt.cdaut.de', 'https://invidious.privacyredirect.com', 'https://invidious.drgns.space',
+  'https://inv.privacy.com.de', 'https://yt.drgnz.club', 'https://yt.bromine35.me',
+  'https://hyperpipe.surge.sh', 'https://watch.leptons.xyz', 'https://iv-duti-dev.zproxy.org',
+  'https://inv1-nadeko-net.zproxy.org', 'https://inv2-nadeko-net.zproxy.org', 'https://inv3-nadeko-net.zproxy.org',
+  'https://inv4-nadeko-net.zproxy.org', 'https://invidious-f5-si.zproxy.org', 'https://invidious.reallyaweso.me',
+  'https://iv.nboeck.de', 'https://yt.omada.cafe', 'https://inv.thepixora.com',
 ];
 
 // =================== Invidiousインスタンスの役割分担 ===================
@@ -2272,20 +2342,34 @@ async function loadRecommendations() {
 // =================== APIフェッチ ===================
 async function fetchFromInvidious(query, context, page = 1) {
   let q = query; if (context === 'shorts') q += ' #shorts';
-  // 役割に応じてインスタンスのサブセットを選択（負荷分散・高速化）
   const role = (context === 'shorts') ? 'shorts'
              : (context === 'trend')  ? 'trend'
              : (context === 'search') ? 'search'
              : 'search';
-  const pool = getInvidiousFor(role);
-  const tryInst = (instance) => {
-    const url = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(q)}&page=${page}&hl=ja&region=JP`);
-    return fetch(url, { signal: AbortSignal.timeout(3500) }).then(r => {
-      if(!r.ok) throw new Error('bad'); return r.json();
-    }).then(d => { if(!d || (Array.isArray(d) && d.length===0)) throw new Error('empty'); return d; });
-  };
-  // 最速応答を採用（0.5秒以下を目標に並列レース）
-  try { return await Promise.any(pool.map(tryInst)); } catch(e) { return null; }
+  // 検索の信頼性を最大化するため、役割プールではなく全インスタンスを使用
+  const pool = (context === 'search') ? INVIDIOUS_INSTANCES.slice() : getInvidiousFor(role);
+  const path = `/api/v1/search?q=${encodeURIComponent(q)}&page=${page}&hl=ja&region=JP`;
+  const CORS_FALLBACKS = [
+    (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://api.codetabs.com/v1/proxy/?quest=' + u,
+  ];
+  const tryUrl = (url, timeout = 5000) => fetch(url, { signal: AbortSignal.timeout(timeout) })
+    .then(r => { if (!r.ok) throw new Error('bad'); return r.json(); })
+    .then(d => { if (!d || (Array.isArray(d) && d.length === 0)) throw new Error('empty'); return d; });
+
+  // ラウンド1: 直接アクセスを全インスタンスでレース
+  const direct = pool.map(inst => tryUrl(buildFetchUrl(`${inst}${path}`), 4500));
+  try { return await Promise.any(direct); } catch(e) {}
+
+  // ラウンド2: CORSプロキシ経由で再レース（直接失敗時のフォールバック）
+  const proxied = [];
+  for (const inst of pool.slice(0, 10)) {
+    for (const wrap of CORS_FALLBACKS) {
+      proxied.push(tryUrl(wrap(`${inst}${path}`), 6500));
+    }
+  }
+  try { return await Promise.any(proxied); } catch(e) { return null; }
 }
  
 function _pickBestChannel(list, target) {
@@ -2557,17 +2641,31 @@ async function triggerSearch(query, context, append = false) {
     if (context === 'trend' && !append) { fetchShortsForHome(); loadRecommendations(); }
     return;
   }
+  // 検索コンテキストではCSEキャプチャを使わず、空結果メッセージを表示する
+  isFetching = false;
+  if (context === 'search') {
+    const container = document.getElementById('search-results-list');
+    if (container && !append) {
+      container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary);font-size:14px;">検索結果が取得できませんでした。少し時間をおいて再度お試しください。</div>';
+    }
+    document.getElementById('search-loader')?.classList.add('hidden');
+    // バックグラウンドで関連チャンネル取得は継続
+    if (!append) searchChannelsFromInvidious(query, 3).then(renderSearchChannels).catch(()=>{});
+    return;
+  }
+  // 検索以外（trend等）は従来通りCSEフォールバック
   clearTimeout(captchaTimer);
   captchaTimer = setTimeout(() => {
     if (isFetching) {
       const c = document.getElementById('hidden-cse-container');
       c.style.display = 'block'; c.style.position = 'fixed'; c.style.top = '100px'; c.style.left = '50%'; c.style.transform = 'translateX(-50%)'; c.style.zIndex = '10000';
-      alert("ロボット確認が必要です。画面の指示に従ってください。");
     }
   }, 3000);
-  const element = google.search.cse.element.getElement('studyCse');
-  const decor = append ? ["", " pv", " hd"][Math.floor(Math.random()*3)] : "";
-  element.execute(query + decor + " site:youtube.com");
+  try {
+    const element = google.search.cse.element.getElement('studyCse');
+    const decor = append ? ["", " pv", " hd"][Math.floor(Math.random()*3)] : "";
+    element.execute(query + decor + " site:youtube.com");
+  } catch(e) { isFetching = false; }
 }
  
 async function loadMoreChannelShorts() {
@@ -2584,7 +2682,7 @@ function updateChannelHeaderInfo(channelInfo) {
   if (!channelInfo) return;
   const nameEl = document.getElementById('channel-page-name'), handleEl = document.getElementById('channel-page-handle'), metaEl = document.getElementById('channel-page-meta'), iconEl = document.getElementById('channel-page-icon'), descEl = document.getElementById('channel-page-desc');
   if (channelInfo.author) nameEl.innerText = channelInfo.author;
-  if (channelInfo.authorId) { handleEl.innerText = `@${channelInfo.authorId}`; currentChannelId = channelInfo.authorId; try { history.replaceState({ view: 'channel', channelId: channelInfo.authorId }, '', `#/channel/${channelInfo.authorId}`); } catch(e) {} }
+  if (channelInfo.authorId) { handleEl.innerText = `@${channelInfo.authorId}`; currentChannelId = channelInfo.authorId; try { history.replaceState({ view: 'channel', channelId: channelInfo.authorId }, '', `#/@${channelInfo.authorId}`); } catch(e) {} }
   if (channelInfo.subCount) metaEl.innerText = `登録者数 ${formatSubCount(channelInfo.subCount)} • 動画 ${channelInfo.videoCount||'--'}件`;
   else if (channelInfo.videoCount) metaEl.innerText = `動画 ${channelInfo.videoCount}件`;
   if (descEl && channelInfo.description) descEl.innerText = channelInfo.description;
@@ -3046,6 +3144,11 @@ function renderSearchResults(videos, append = false) {
   const container = document.getElementById('search-results-list');
   if (!container) return;
   if (!append) container.innerHTML = '';
+  if (!append && (!videos || videos.length === 0)) {
+    container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary);font-size:14px;">該当する動画が見つかりませんでした。別のキーワードでお試しください。</div>';
+    document.getElementById('search-loader')?.classList.add('hidden');
+    return;
+  }
   videos.forEach(v => {
     const item = document.createElement('div'); item.className = 'search-result-item';
     const isLive = v.isLive || (v.title && (v.title.includes('ライブ')||v.title.includes('LIVE')||v.title.includes('live')||v.title.includes('配信')));
@@ -3261,8 +3364,8 @@ function handleSearch(e, externalQuery = null) {
   lastQuery = q;
   document.getElementById('search-shorts-section').classList.add('hidden');
   document.getElementById('search-shorts-container').innerHTML = '';
-  document.getElementById('search-results-list').innerHTML = ''; const _sc=document.getElementById('search-channels-section'); if(_sc){_sc.innerHTML='';_sc.classList.add('hidden');}
-  try { history.pushState({ view: 'search', query: q }, '', `#/search?q=${encodeURIComponent(q)}`); } catch(e) {}
+  document.getElementById('search-results-list').innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary);font-size:14px;">検索中...</div>'; const _sc=document.getElementById('search-channels-section'); if(_sc){_sc.innerHTML='';_sc.classList.add('hidden');}
+  try { history.pushState({ view: 'search', query: q }, '', `#/search?v=${encodeURIComponent(q)}`); } catch(e) {}
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-search')?.classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
@@ -3300,7 +3403,7 @@ function openChannel(channelName, thumb = null) {
     if (info.authorId) {
       currentChannelId = info.authorId;
       document.getElementById('channel-page-handle').innerText = `@${info.authorId}`;
-      try { history.replaceState({ view: 'channel', channelId: info.authorId, channelName }, '', `#/channel/${info.authorId}`); } catch(e) {}
+      try { history.replaceState({ view: 'channel', channelId: info.authorId, channelName }, '', `#/@${info.authorId}`); } catch(e) {}
     }
     if (info.subCount) document.getElementById('channel-page-meta').innerText = `登録者数 ${formatSubCount(info.subCount)} • 動画 ${info.videoCount||'--'}件`;
     else if (info.videoCount) document.getElementById('channel-page-meta').innerText = `動画 ${info.videoCount}件`;
@@ -3633,8 +3736,8 @@ function navigate(viewName, opts = {}) {
     else if (viewName === 'settings') hash = '#/setting';
     else if (viewName === 'subscriptions') hash = '#/feed/subscriptions';
     else if (viewName === 'playlists') hash = '#/playlists';
-    else if (viewName === 'search') hash = lastQuery ? `#/search?q=${encodeURIComponent(lastQuery)}` : '#/search';
-    else if (viewName === 'channel') hash = currentChannelId ? `#/channel/${currentChannelId}` : '#/channel';
+    else if (viewName === 'search') hash = lastQuery ? `#/search?v=${encodeURIComponent(lastQuery)}` : '#/search';
+    else if (viewName === 'channel') hash = currentChannelId ? `#/@${currentChannelId}` : '#/channel';
     else if (viewName === 'welcome') hash = '#/';
     else if (viewName === 'watch' && opts.videoId) hash = `#/watch?v=${opts.videoId}`;
     else if (viewName === 'shorts' && opts.videoId) hash = `#/shorts/${opts.videoId}`;
@@ -3653,7 +3756,7 @@ window.addEventListener('popstate', (e) => {
     else navigate('channel', { noHistory: true });
   }
   else if (view === 'search') {
-    const searchQ = query || new URLSearchParams(location.search).get('q') || '';
+    const searchQ = query || new URLSearchParams(location.search).get('v') || new URLSearchParams(location.search).get('q') || '';
     if (searchQ) {
       document.getElementById('search-input').value = searchQ;
       navigate('search', { noHistory: true });
@@ -3669,11 +3772,17 @@ function parseInitialUrl() {
   if(!path) path = '/';
   const watchMatch = path.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
   const shortsMatch = path.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
-  const searchMatch = path.match(/\/search\?q=(.+)/);
+  // 新仕様: /#/search?v=keyword (旧 ?q= も後方互換)
+  const searchMatchV = path.match(/\/search\?v=(.+)/);
+  const searchMatchQ = path.match(/\/search\?q=(.+)/);
+  // 新仕様: /#/@channelId (旧 /channel/id も後方互換)
+  const channelAtMatch = path.match(/\/@([a-zA-Z0-9_@.-]+)/);
   const channelMatch = path.match(/\/channel\/([a-zA-Z0-9_@-]+)/);
   if (watchMatch) return { view: 'watch', videoId: watchMatch[1] };
   if (shortsMatch) return { view: 'shorts', videoId: shortsMatch[1] };
-  if (searchMatch) return { view: 'search', query: decodeURIComponent(searchMatch[1]) };
+  if (searchMatchV) return { view: 'search', query: decodeURIComponent(searchMatchV[1]) };
+  if (searchMatchQ) return { view: 'search', query: decodeURIComponent(searchMatchQ[1]) };
+  if (channelAtMatch) return { view: 'channel', channelId: channelAtMatch[1] };
   if (channelMatch) return { view: 'channel', channelId: channelMatch[1] };
   if (path === '/feed/history') return { view: 'history' };
   if (path === '/setting' || path === '/settings') return { view: 'settings' };
@@ -5331,5 +5440,914 @@ window.fetchExtraSearch = async function(query){
 })();
 </script>
 
+<script>
+/* ===================== 仲良しTube 追加パッチ =====================
+   - Invidiousインスタンスの成功率を学習し、成功率順に並べ替え
+   - Piped APIをさらに追加
+   - 設定にAPI優先度UI (Piped / Invidious / Min-Pro Search) を追加し並べ替え可能に
+   - ホーム動画はチャンネル取得済みのものを優先表示
+   - 動画カードからアクセス数 (視聴回数) を非表示
+   - m.youtube.com / www.youtube.com の動画でもチャンネル情報を取得/再読込
+   ============================================================== */
+(function(){
+  'use strict';
+
+  /* ---------- 1) Invidious 成功率トラッキング ---------- */
+  const STATS_KEY = 'inv_instance_stats_v1';
+  function loadStats(){ try { return JSON.parse(localStorage.getItem(STATS_KEY)||'{}'); } catch(_) { return {}; } }
+  function saveStats(s){ try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch(_){} }
+  const stats = loadStats();
+  function recordResult(instance, ok){
+    if (!instance) return;
+    const host = String(instance).replace(/\/$/,'');
+    const cur = stats[host] || { ok:0, fail:0 };
+    if (ok) cur.ok++; else cur.fail++;
+    // 上限でリセットして古いデータを薄める
+    if (cur.ok + cur.fail > 200) { cur.ok = Math.round(cur.ok/2); cur.fail = Math.round(cur.fail/2); }
+    stats[host] = cur;
+    saveStats(stats);
+  }
+  window.getInvSuccessRate = function(host){
+    const c = stats[String(host).replace(/\/$/,'')];
+    if (!c || (c.ok+c.fail) < 3) return 0.5; // 未計測は中間値
+    return c.ok / (c.ok + c.fail);
+  };
+  function sortInvBySuccess(list){
+    return list.slice().sort((a,b) => window.getInvSuccessRate(b) - window.getInvSuccessRate(a));
+  }
+  // fetch をフックして Invidious ホスト宛は成功率を記録
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = async function(input, init){
+    const url = (typeof input === 'string') ? input : (input && input.url) || '';
+    // プロキシ越し URL から元のホストを抽出
+    let host = null;
+    try {
+      const m = url.match(/https?:\/\/([^\/]+)/);
+      if (m) {
+        let candidate = m[1];
+        // プロキシ経由なら url= に元URLが入っている
+        const mm = url.match(/[?&](?:url|quest|q)=([^&]+)/);
+        if (mm) { try { const inner = decodeURIComponent(mm[1]); const m2 = inner.match(/https?:\/\/([^\/]+)/); if (m2) candidate = m2[1]; } catch(_){} }
+        host = candidate;
+      }
+    } catch(_){}
+    const isInv = host && (window.INVIDIOUS_INSTANCES||[]).some(i => i.includes(host));
+    try {
+      const r = await _origFetch(input, init);
+      if (isInv) recordResult('https://'+host, !!(r && r.ok));
+      return r;
+    } catch(e) {
+      if (isInv) recordResult('https://'+host, false);
+      throw e;
+    }
+  };
+
+  /* ---------- 2) Piped インスタンス追加 ---------- */
+  const EXTRA_PIPED = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.adminforge.de',
+    'https://pipedapi.reallyaweso.me',
+    'https://pipedapi.r4fo.com',
+    'https://pipedapi.leptons.xyz',
+    'https://pipedapi.darkness.services',
+    'https://api.piped.private.coffee',
+    'https://pipedapi.drgns.space',
+    'https://pipedapi.in.projectsegfau.lt',
+    'https://pipedapi.us.projectsegfau.lt',
+    'https://pipedapi.smnz.de',
+    'https://pipedapi.tokhmi.xyz',
+    'https://piapi.ggtyler.dev',
+    'https://pipedapi.ducks.party',
+    'https://api.piped.yt',
+    'https://pipedapi.nosebs.ru',
+    'https://pipedapi.phoenixthrush.com',
+  ];
+  // 既存 PIPED_INSTANCES とマージ
+  try {
+    const cur = Array.isArray(window.PIPED_INSTANCES) ? window.PIPED_INSTANCES : [];
+    const merged = Array.from(new Set([...cur, ...EXTRA_PIPED]));
+    window.PIPED_INSTANCES = merged;
+  } catch(_){}
+
+  /* ---------- 3) API 優先度 (Piped / Invidious / Min-Pro) ---------- */
+  const API_ORDER_KEY = 'api_provider_order_v1';
+  const DEFAULT_ORDER = ['piped','invidious','minpro'];
+  const LABELS = { piped:'Piped API', invidious:'Invidious API', minpro:'Min-Pro Search API' };
+  function getOrder(){
+    try {
+      const s = JSON.parse(localStorage.getItem(API_ORDER_KEY)||'null');
+      if (Array.isArray(s) && s.length === 3) return s;
+    } catch(_){}
+    return DEFAULT_ORDER.slice();
+  }
+  function setOrder(arr){ try { localStorage.setItem(API_ORDER_KEY, JSON.stringify(arr)); } catch(_){} }
+  window.getApiProviderOrder = getOrder;
+
+  /* ---------- 4) 各プロバイダの取得関数を統一 ---------- */
+  async function callInvidious(query, context, page){
+    // 元の fetchFromInvidious (Pipedラップ前) を持っていないので、Invidious単独パスを直接呼ぶ
+    const pool = sortInvBySuccess((window.INVIDIOUS_INSTANCES||[]).slice());
+    const paths = (context==='trend')
+      ? ['/api/v1/popular?region=JP&hl=ja','/api/v1/trending?region=JP&hl=ja','/api/v1/popular?hl=ja']
+      : ['/api/v1/search?q='+encodeURIComponent(query)+'&page='+(page||1)+'&hl=ja&region=JP'];
+    for (const inst of pool.slice(0,10)) {
+      for (const p of paths) {
+        try {
+          const url = (typeof buildFetchUrl==='function'?buildFetchUrl(inst+p):inst+p);
+          const r = await _origFetch(url, { signal: AbortSignal.timeout(4500) });
+          if (!r || !r.ok) continue;
+          const d = await r.json();
+          if (Array.isArray(d) && d.length) return d;
+        } catch(_){}
+      }
+    }
+    return null;
+  }
+  async function callPiped(query, context, page){
+    if (context==='trend' && typeof window.fetchPipedTrending==='function') return await window.fetchPipedTrending();
+    if (typeof window.fetchPipedSearch==='function') return await window.fetchPipedSearch(query, page||1);
+    return null;
+  }
+  async function callMinPro(query){
+    if (typeof window.fetchExtraSearch==='function') return await window.fetchExtraSearch(query);
+    return null;
+  }
+  const PROVIDERS = { piped: callPiped, invidious: callInvidious, minpro: callMinPro };
+
+  /* ---------- 5) チャンネル情報がある順に並べる ---------- */
+  function hasChannelInfo(v){
+    if (!v) return false;
+    const a = v.author || v.channel || '';
+    if (!a) return false;
+    if (typeof window.isInvalidChannel === 'function' && window.isInvalidChannel(a)) return false;
+    return true;
+  }
+  function dedupAndSort(list){
+    const seen = new Set(); const out = [];
+    for (const v of (list||[])) {
+      if (!v) continue;
+      const id = v.videoId || v.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id); out.push(v);
+    }
+    // チャンネル情報がある (= author あり, isInvalidでない) を先頭に
+    return out.sort((a,b) => (hasChannelInfo(b)?1:0) - (hasChannelInfo(a)?1:0));
+  }
+
+  /* ---------- 6) fetchFromInvidious を優先度ベースで再ラップ ---------- */
+  function installProviderRouter(){
+    if (typeof window.fetchFromInvidious !== 'function') return false;
+    if (window.__patchedProviderRouter) return true;
+    window.__patchedProviderRouter = true;
+    window.fetchFromInvidious = async function(query, context, page){
+      const order = getOrder();
+      const tasks = order.map(k => (PROVIDERS[k] ? PROVIDERS[k](query, context, page).catch(()=>null) : Promise.resolve(null)));
+      const results = await Promise.allSettled(tasks);
+      const out = [];
+      // 優先度順に追加（先頭の方が前に並ぶ）
+      results.forEach(r => { if (r.status==='fulfilled' && Array.isArray(r.value)) out.push(...r.value); });
+      const merged = dedupAndSort(out);
+      return merged.length ? merged : null;
+    };
+    return true;
+  }
+  if (!installProviderRouter()) {
+    const iv = setInterval(() => { if (installProviderRouter()) clearInterval(iv); }, 200);
+    setTimeout(() => clearInterval(iv), 15000);
+  }
+
+  /* ---------- 7) loadTrend をチャンネル情報優先で並べ直し ---------- */
+  const _origLoadTrend2 = window.loadTrend;
+  if (typeof _origLoadTrend2 === 'function') {
+    window.loadTrend = async function(){
+      const r = await _origLoadTrend2.apply(this, arguments);
+      // 描画後にカードを並び替え: data-vid を持つカードのうち、チャンネル名が表示されているものを前に
+      setTimeout(() => {
+        const grid = document.getElementById('home-grid');
+        if (!grid) return;
+        const cards = Array.from(grid.querySelectorAll('.video-card'));
+        cards.sort((a,b) => {
+          const ca = (a.querySelector('.video-meta-channel')||{}).textContent || '';
+          const cb = (b.querySelector('.video-meta-channel')||{}).textContent || '';
+          const aHas = ca.trim().length > 0 ? 1 : 0;
+          const bHas = cb.trim().length > 0 ? 1 : 0;
+          return bHas - aHas;
+        });
+        cards.forEach(c => grid.appendChild(c));
+      }, 600);
+      return r;
+    };
+  }
+
+  /* ---------- 8) アクセス数 (回視聴) を非表示 ---------- */
+  try {
+    const _origFormatViews = window.formatViews;
+    window.formatViews = function(){ return ''; };
+  } catch(_){}
+  const css = document.createElement('style');
+  css.textContent = `
+    /* 動画カード内の視聴回数を非表示 */
+    .video-meta span:first-child:not(:empty) { }
+    .video-meta { gap:4px; }
+    /* "回視聴" を含むテキストは表示しない */
+    #api-views, .video-meta span.views, .vh-meta { }
+  `;
+  document.head.appendChild(css);
+  // DOM 走査で「回視聴」を含む要素を消す（軽量）
+  function purgeViewsText(root){
+    try {
+      const nodes = (root||document).querySelectorAll('.video-meta span, .vh-meta');
+      nodes.forEach(n => { if (/回視聴/.test(n.textContent)) n.style.display = 'none'; });
+    } catch(_){}
+  }
+  const mo = new MutationObserver(() => purgeViewsText());
+  mo.observe(document.body, { childList:true, subtree:true });
+  setInterval(purgeViewsText, 1500);
+
+  /* ---------- 9) m.youtube.com / www.youtube.com でもチャンネル取得 ---------- */
+  function extractVideoId(u){
+    if (!u) return null;
+    const s = String(u);
+    let m = s.match(/[?&]v=([A-Za-z0-9_-]{11})/);
+    if (m) return m[1];
+    m = s.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);
+    if (m) return m[1];
+    m = s.match(/youtube\.com\/(?:embed|shorts|live)\/([A-Za-z0-9_-]{11})/);
+    if (m) return m[1];
+    m = s.match(/^([A-Za-z0-9_-]{11})$/);
+    return m ? m[1] : null;
+  }
+  window.extractVideoId = extractVideoId;
+  async function refetchChannelForVideo(videoId){
+    const pool = sortInvBySuccess((window.INVIDIOUS_INSTANCES||[]).slice()).slice(0,8);
+    for (const inst of pool) {
+      try {
+        const url = (typeof buildFetchUrl==='function'?buildFetchUrl:(x=>x))(`${inst}/api/v1/videos/${videoId}?fields=title,author,authorId,authorThumbnails&hl=ja&region=JP`);
+        const r = await _origFetch(url, { signal: AbortSignal.timeout(4000) });
+        if (!r || !r.ok) continue;
+        const d = await r.json();
+        if (d && d.author) return d;
+      } catch(_){}
+    }
+    // Piped fallback
+    for (const inst of (window.PIPED_INSTANCES||[]).slice(0,6)) {
+      try {
+        const r = await _origFetch(`${inst}/streams/${videoId}`, { signal: AbortSignal.timeout(4000) });
+        if (!r || !r.ok) continue;
+        const d = await r.json();
+        if (d && d.uploader) return { author:d.uploader, authorId:(d.uploaderUrl||'').replace(/^\/channel\//,''), authorThumbnails:d.uploaderAvatar?[{url:d.uploaderAvatar}]:null };
+      } catch(_){}
+    }
+    return null;
+  }
+  window.refetchChannelForVideo = refetchChannelForVideo;
+  // playVideo をラップ: URL風入力なら videoId 抽出 + チャンネル不明なら再取得
+  const _origPlayVideo = window.playVideo;
+  if (typeof _origPlayVideo === 'function') {
+    window.playVideo = function(id, title, channel, thumb){
+      // m.youtube.com / www.youtube.com の URL を渡された場合も対応
+      const vid = extractVideoId(id) || id;
+      const needFetch = !channel || (typeof window.isInvalidChannel==='function' && window.isInvalidChannel(channel));
+      const ret = _origPlayVideo.call(this, vid, title, channel||'', thumb||'');
+      if (needFetch && vid) {
+        refetchChannelForVideo(vid).then(info => {
+          if (!info) return;
+          // チャンネル名表示要素を後追い更新
+          const sel = document.querySelectorAll('.video-channel-name, #channel-name, .api-author, [data-channel-of="'+vid+'"]');
+          sel.forEach(el => { if (el && !el.textContent.trim()) el.textContent = info.author; });
+          try {
+            const avatar = document.querySelector('.video-channel-avatar img, #channel-avatar img');
+            if (avatar && info.authorThumbnails && info.authorThumbnails[0]) avatar.src = info.authorThumbnails[0].url;
+          } catch(_){}
+        });
+      }
+      return ret;
+    };
+  }
+
+  /* ---------- 10) 設定 UI: API 優先度ブロックを注入 ---------- */
+  function injectApiProviderUI(){
+    const settingsView = document.getElementById('view-settings') || document.querySelector('[data-view="settings"]') || document.getElementById('settings-view');
+    if (!settingsView) return;
+    if (settingsView.querySelector('#api-provider-priority')) return;
+    const box = document.createElement('div');
+    box.id = 'api-provider-priority';
+    box.style.cssText = 'margin:16px;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--chip-bg);';
+    box.innerHTML = `
+      <div style="font-weight:bold;margin-bottom:8px;">API 優先度 (上が高優先)</div>
+      <div id="api-prov-list"></div>
+      <button id="api-prov-reset" style="margin-top:8px;padding:6px 12px;border-radius:8px;background:var(--chip-bg);border:1px solid var(--border-color);">既定に戻す</button>
+    `;
+    settingsView.insertBefore(box, settingsView.firstChild);
+    renderProvList();
+    box.querySelector('#api-prov-reset').onclick = () => { setOrder(DEFAULT_ORDER.slice()); renderProvList(); };
+  }
+  function renderProvList(){
+    const list = document.getElementById('api-prov-list');
+    if (!list) return;
+    const order = getOrder();
+    list.innerHTML = order.map((k,i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--border-color);">
+        <span style="width:24px;text-align:right;color:var(--text-secondary);">${i+1}.</span>
+        <span style="flex:1;font-weight:500;">${LABELS[k]||k}</span>
+        <button data-mv="-1" data-i="${i}" ${i===0?'disabled':''} style="padding:4px 10px;border-radius:6px;background:var(--bg-color);border:1px solid var(--border-color);opacity:${i===0?0.4:1};">↑</button>
+        <button data-mv="1" data-i="${i}" ${i===order.length-1?'disabled':''} style="padding:4px 10px;border-radius:6px;background:var(--bg-color);border:1px solid var(--border-color);opacity:${i===order.length-1?0.4:1};">↓</button>
+      </div>
+    `).join('');
+    list.querySelectorAll('button[data-mv]').forEach(btn => {
+      btn.onclick = () => {
+        const i = +btn.dataset.i, d = +btn.dataset.mv;
+        const o = getOrder(); const j = i+d;
+        if (j<0 || j>=o.length) return;
+        [o[i],o[j]]=[o[j],o[i]]; setOrder(o); renderProvList();
+      };
+    });
+  }
+  // navigate フック (既存)
+  const _origNav = window.navigate;
+  if (typeof _origNav === 'function') {
+    window.navigate = function(v){
+      const r = _origNav.apply(this, arguments);
+      if (v === 'settings') setTimeout(injectApiProviderUI, 100);
+      return r;
+    };
+  }
+  document.addEventListener('DOMContentLoaded', () => setTimeout(injectApiProviderUI, 800));
+  setTimeout(injectApiProviderUI, 1500);
+
+  /* ---------- 11) Invidious 優先順位リストも成功率順に再ソート ---------- */
+  const _origRenderList = window.renderApiPriorityList;
+  if (typeof _origRenderList === 'function') {
+    // 起動時に保存優先度がなければ成功率順に
+    try {
+      const k = 'api_priority_v1';
+      if (!localStorage.getItem(k)) {
+        const sorted = sortInvBySuccess((window.INVIDIOUS_INSTANCES||[]).slice());
+        localStorage.setItem(k, JSON.stringify(sorted));
+      }
+    } catch(_){}
+  }
+
+  console.log('[仲良しTube patch] loaded — providers:', getOrder(), 'piped:', (window.PIPED_INSTANCES||[]).length);
+})();
+</script>
+<script>
+/* ===================== 仲良しTube 追加パッチ #2 =====================
+   - 全箇所に小さなスピナー表示
+   - 設定で各APIの死活状況 + 何時間死んでいるかを表示
+   - Shorts ページの下端で動画自動読み込み
+   - 動画再生開始を高速化 (preload + 先行バッファ)
+   - 取得できた順に即表示 (streamHome を search にも適用)
+   - CORSプロキシを毎回ローテーション
+   - 日本人フィルタは home (trend) のみ適用
+   - ホームを視聴履歴 + 検索履歴ベースでパーソナライズ
+   - 次の動画を視聴中動画と関連性で並び替え
+   ============================================================== */
+(function(){
+  'use strict';
+
+  /* ---------- 共通: 小さいスピナー CSS ---------- */
+  const css = document.createElement('style');
+  css.textContent = `
+    .nyt-mini-spin {
+      display:inline-block; width:18px; height:18px; vertical-align:middle;
+      border:2px solid var(--text-secondary, #888); border-top-color: transparent;
+      border-radius:50%; animation: nyt-spin 0.7s linear infinite;
+    }
+    .nyt-spin-overlay {
+      position:fixed; z-index:9999; right:14px; bottom:14px;
+      width:32px; height:32px; border-radius:50%;
+      background: rgba(0,0,0,0.55); display:none;
+      align-items:center; justify-content:center; pointer-events:none;
+    }
+    .nyt-spin-overlay.on { display:flex; }
+    .nyt-spin-overlay .nyt-mini-spin {
+      width:16px; height:16px; border-color:#fff; border-top-color:transparent;
+    }
+    /* 既存の大きなローダーを小さく */
+    .loader-spinner-wrap, #home-loader, #search-loader { transform:scale(0.7); transform-origin:center; }
+    .spinner-ring { width:24px !important; height:24px !important; border-width:3px !important; }
+    @keyframes nyt-spin { to { transform: rotate(360deg); } }
+  `;
+  document.head.appendChild(css);
+  // 右下グローバルスピナー
+  const overlay = document.createElement('div');
+  overlay.className = 'nyt-spin-overlay';
+  overlay.innerHTML = '<div class="nyt-mini-spin"></div>';
+  document.addEventListener('DOMContentLoaded', () => document.body.appendChild(overlay));
+  setTimeout(() => { if (!overlay.parentNode) document.body.appendChild(overlay); }, 500);
+
+  /* ---------- fetch 中はグローバルスピナー & 死活トラッキング ---------- */
+  const STATS_KEY = 'inv_instance_stats_v1';
+  function loadStats(){ try { return JSON.parse(localStorage.getItem(STATS_KEY)||'{}'); } catch(_){ return {}; } }
+  function saveStats(s){ try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch(_){} }
+
+  let _activeFetches = 0;
+  function bump(d){ _activeFetches = Math.max(0, _activeFetches + d); if (overlay) overlay.classList.toggle('on', _activeFetches>0); }
+
+  // CORSプロキシ ローテーション
+  const PROXIES = window.__CORS_PROXIES || [
+    (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://api.codetabs.com/v1/proxy?quest=' + u,
+    (u) => 'https://proxy.cors.sh/' + u,
+    (u) => 'https://cors.eu.org/' + u,
+    (u) => 'https://yacdn.org/serve/' + u,
+  ];
+  window.__CORS_PROXIES = PROXIES;
+  let _proxyIdx = 0;
+  function nextProxy(u){ const fn = PROXIES[_proxyIdx % PROXIES.length]; _proxyIdx++; return fn(u); }
+
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = async function(input, init){
+    const url = (typeof input === 'string') ? input : (input && input.url) || '';
+    bump(+1);
+    // 元のホスト抽出
+    let host = null;
+    try {
+      const m = url.match(/https?:\/\/([^\/]+)/);
+      if (m) host = m[1];
+      const mm = url.match(/[?&](?:url|quest|q)=([^&]+)/);
+      if (mm) { try { const inner = decodeURIComponent(mm[1]); const m2 = inner.match(/https?:\/\/([^\/]+)/); if (m2) host = m2[1]; } catch(_){} }
+    } catch(_){}
+    const isApi = host && (
+      (window.INVIDIOUS_INSTANCES||[]).some(i => i.includes(host)) ||
+      (window.PIPED_INSTANCES||[]).some(i => i.includes(host)) ||
+      /min-pro/.test(host)
+    );
+    const stats = loadStats();
+    const record = (ok) => {
+      if (!host) return;
+      const h = 'https://'+host.replace(/^https?:\/\//,'');
+      const c = stats[h] || { ok:0, fail:0, lastOk:0, lastFail:0 };
+      if (ok) { c.ok++; c.lastOk = Date.now(); }
+      else { c.fail++; c.lastFail = Date.now(); }
+      if (c.ok + c.fail > 200) { c.ok = Math.round(c.ok/2); c.fail = Math.round(c.fail/2); }
+      stats[h] = c; saveStats(stats);
+    };
+    try {
+      const r = await _origFetch(input, init);
+      if (isApi) record(!!(r && r.ok));
+      if (r && r.ok) { bump(-1); return r; }
+      throw new Error('bad');
+    } catch(e) {
+      if (isApi) record(false);
+      // プロキシをローテーションしてリトライ (GETのみ)
+      const method = (init && init.method) || 'GET';
+      if (typeof input === 'string' && method.toUpperCase()==='GET' && isApi) {
+        for (let i = 0; i < 3; i++) {
+          try {
+            const proxied = nextProxy(input);
+            const r2 = await _origFetch(proxied, init);
+            if (r2 && r2.ok) { record(true); bump(-1); return r2; }
+          } catch(_){}
+        }
+      }
+      bump(-1);
+      throw e;
+    }
+  };
+
+  /* ---------- 設定 API 死活ダッシュボード拡張 ---------- */
+  function hoursSince(ts){
+    if (!ts) return null;
+    const ms = Date.now() - ts;
+    const h = ms / 3600000;
+    if (h < 1) return Math.max(1, Math.round(ms/60000)) + '分前';
+    if (h < 24) return h.toFixed(1) + '時間前';
+    return (h/24).toFixed(1) + '日前';
+  }
+  const _origRender = window.renderApiDashboard;
+  function renderDashboardEnhanced(){
+    const el = document.getElementById('nyt-api-dashboard');
+    if (!el) return;
+    const stats = loadStats();
+    // すべての既知ホスト (Inv + Piped + min-pro) を統合
+    const known = new Set();
+    (window.INVIDIOUS_INSTANCES||[]).forEach(i => known.add(i.replace(/\/$/,'')));
+    (window.PIPED_INSTANCES||[]).forEach(i => known.add(i.replace(/\/$/,'')));
+    known.add('https://min-pro.duckdns.org');
+    Object.keys(stats).forEach(h => known.add(h));
+    const rows = [...known].map(host => {
+      const s = stats[host] || { ok:0, fail:0, lastOk:0, lastFail:0 };
+      const total = s.ok + s.fail;
+      const rate = total ? Math.round((s.ok/total)*100) : -1;
+      // 死亡判定: 直近の失敗が最後で、最後の成功からも長く経っているか、連続失敗
+      const isDead = total >= 3 && (rate < 30 || (s.lastFail > s.lastOk && (Date.now() - s.lastOk) > 1800000));
+      const color = isDead ? '#ef4444' : rate >= 80 ? '#22c55e' : rate >= 50 ? '#eab308' : rate >= 0 ? '#f97316' : '#9ca3af';
+      const status = isDead ? '🔴 死亡' : rate < 0 ? '⚪ 未計測' : rate >= 80 ? '🟢 正常' : '🟡 不安定';
+      const deadFor = isDead ? (hoursSince(s.lastOk || s.lastFail) || '?') : '';
+      return { host, ok:s.ok, total, rate, color, status, deadFor, isDead };
+    }).sort((a,b) => (a.isDead?1:0) - (b.isDead?1:0) || b.rate - a.rate);
+    el.innerHTML = rows.map(r => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border-color);font-size:12px;">
+        <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;">${r.host.replace('https://','')}</div>
+        <div style="width:90px;text-align:right;color:${r.color};font-weight:600;">${r.status}</div>
+        <div style="width:60px;text-align:right;color:${r.color};">${r.rate<0?'--':r.rate+'%'}</div>
+        <div style="width:110px;text-align:right;font-size:11px;color:var(--text-secondary);">${r.isDead ? '死亡から '+r.deadFor : (r.ok?'最終OK '+(hoursSince(stats[r.host]?.lastOk)||'-'):'')}</div>
+      </div>
+    `).join('') || '<div style="padding:12px;color:var(--text-secondary);">データなし</div>';
+  }
+  window.renderApiDashboard = renderDashboardEnhanced;
+  setInterval(() => { if (document.getElementById('nyt-api-dashboard')) renderDashboardEnhanced(); }, 5000);
+
+  /* ---------- 日本人フィルタは home のみに ---------- */
+  // 既存の renderResults ラップは全画面に適用されているので、上書きで home 限定に
+  const FILT_KEY = 'video_filter_v1';
+  function curFilter(){ return localStorage.getItem(FILT_KEY) || 'all'; }
+  function isJP(v){ const t = (v && ((v.title||'')+' '+(v.channel||v.author||''))) || ''; return /[\u3040-\u309F\u30A0-\u30FF]/.test(t); }
+  // renderResults の前に再ラップ
+  function rewrapRender(){
+    if (typeof window.renderResults !== 'function') return false;
+    if (window.__patchedRR2) return true;
+    window.__patchedRR2 = true;
+    const orig = window.renderResults;
+    window.renderResults = function(videos, append){
+      let v = videos || [];
+      const isHome = (typeof searchContext !== 'undefined' && searchContext === 'trend') || (document.getElementById('home-grid') && !document.getElementById('view-search')?.classList.contains('active'));
+      // 日本人フィルタは home のみ、かつ十分な数のJP動画が取れた場合のみ適用
+      if (isHome && curFilter()==='japan') {
+        const jp = v.filter(isJP);
+        // 完全に消えるのを防ぐ: JPが3件未満なら適用しない
+        if (jp.length >= 3) v = jp;
+      }
+      return orig.call(this, v, append);
+    };
+    return true;
+  }
+  if (!rewrapRender()) { const t = setInterval(()=>{ if (rewrapRender()) clearInterval(t); }, 100); setTimeout(()=>clearInterval(t), 15000); }
+
+  /* ---------- ホームを履歴+検索でパーソナライズ ---------- */
+  function getHist(){ try { return JSON.parse(localStorage.getItem('history')||'[]'); } catch(_){ return []; } }
+  function getSearchHist(){ try { return JSON.parse(localStorage.getItem('search_history')||'[]'); } catch(_){ return []; } }
+  function topKeywords(){
+    const words = new Map();
+    const add = (s, w) => { (s||'').split(/[\s\u3000,、。!?！？\[\]【】「」『』()（）]+/).forEach(t => { if (t.length>=2 && !/^https?$/.test(t)) words.set(t, (words.get(t)||0)+w); }); };
+    getHist().slice(0,15).forEach(v => { add(v.title, 3); add(v.channel, 2); });
+    getSearchHist().slice(0,10).forEach(q => add(q, 4));
+    return [...words.entries()].sort((a,b) => b[1]-a[1]).slice(0,8).map(x => x[0]);
+  }
+  function scoreVideo(v, kws){
+    const text = ((v.title||'')+' '+(v.author||v.channel||'')).toLowerCase();
+    let s = 0;
+    kws.forEach(k => { if (text.includes(k.toLowerCase())) s += 2; });
+    if (v.author && getHist().some(h => h.channel === v.author)) s += 5;
+    return s;
+  }
+  // loadTrend をパーソナライズで再ラップ
+  const _origLoadTrendPersonal = window.loadTrend;
+  if (typeof _origLoadTrendPersonal === 'function') {
+    window.loadTrend = async function(){
+      const r = await _origLoadTrendPersonal.apply(this, arguments);
+      setTimeout(() => {
+        const grid = document.getElementById('home-grid');
+        if (!grid) return;
+        const kws = topKeywords();
+        if (!kws.length) return;
+        const cards = Array.from(grid.querySelectorAll('.video-card'));
+        cards.forEach(c => {
+          const title = (c.querySelector('.video-title')||{}).textContent || '';
+          const channel = (c.querySelector('.video-meta-channel')||{}).textContent || '';
+          c.__score = scoreVideo({ title, author: channel, channel }, kws);
+        });
+        cards.sort((a,b) => (b.__score||0) - (a.__score||0));
+        cards.forEach(c => grid.appendChild(c));
+      }, 800);
+      return r;
+    };
+  }
+
+  /* ---------- Shorts: 下端到達で自動追加読み込み ---------- */
+  let _shortsLoading = false;
+  let _shortsPage = 1;
+  async function loadMoreShorts(){
+    if (_shortsLoading) return;
+    _shortsLoading = true;
+    try {
+      _shortsPage++;
+      // 既存の fetchShortsForHome や検索で取れた shorts を view-shorts に追加
+      const sfp = document.getElementById('shorts-full-page');
+      if (!sfp) return;
+      const queries = ['#shorts 人気','面白い #shorts','ショート 急上昇','話題 #shorts','#shorts 新着'];
+      const q = queries[_shortsPage % queries.length];
+      // Piped trending + invidious search を並列
+      const tasks = [];
+      if (typeof window.fetchPipedSearch === 'function') tasks.push(window.fetchPipedSearch(q, _shortsPage).catch(()=>null));
+      const inv = (window.INVIDIOUS_INSTANCES||[]).slice(0,4);
+      inv.forEach(inst => tasks.push(_origFetch((typeof buildFetchUrl==='function'?buildFetchUrl:(x=>x))(`${inst}/api/v1/search?q=${encodeURIComponent(q)}&page=${_shortsPage}&hl=ja&region=JP`), { signal: AbortSignal.timeout(5000) }).then(r=>r.ok?r.json():null).catch(()=>null)));
+      const all = (await Promise.all(tasks)).filter(Array.isArray).flat();
+      const seen = new Set(Array.from(sfp.querySelectorAll('[data-vid]')).map(el => el.getAttribute('data-vid')));
+      const shorts = all.filter(v => v && v.videoId && !seen.has(v.videoId) && v.lengthSeconds>0 && v.lengthSeconds<=61);
+      shorts.slice(0, 12).forEach(v => {
+        const div = document.createElement('div');
+        div.className = 'shorts-item';
+        div.setAttribute('data-vid', v.videoId);
+        div.style.cssText = 'height:100vh;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;background:#000;cursor:pointer;';
+        div.innerHTML = `<div style="text-align:center;color:#fff;padding:20px;"><img src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg" style="max-width:300px;border-radius:12px;"><div style="margin-top:12px;font-size:14px;">${(v.title||'').replace(/</g,'&lt;').slice(0,80)}</div><div style="font-size:12px;opacity:0.7;">${(v.author||'').replace(/</g,'&lt;')}</div></div>`;
+        div.onclick = () => { if (typeof window.playVideo==='function') window.playVideo(v.videoId, v.title, v.author||'', (v.authorThumbnails&&v.authorThumbnails[0]?v.authorThumbnails[0].url:'')); };
+        sfp.appendChild(div);
+      });
+    } finally {
+      _shortsLoading = false;
+    }
+  }
+  function attachShortsScroll(){
+    const sfp = document.getElementById('shorts-full-page');
+    if (!sfp || sfp.__patched) return;
+    sfp.__patched = true;
+    sfp.addEventListener('scroll', () => {
+      if (sfp.scrollTop + sfp.clientHeight >= sfp.scrollHeight - 300) loadMoreShorts();
+    }, { passive: true });
+    // wheel/touch: コンテンツが少なくスクロールできない時の救済
+    sfp.addEventListener('wheel', (e) => {
+      if (e.deltaY > 0 && sfp.scrollHeight - sfp.clientHeight < 50) loadMoreShorts();
+    }, { passive: true });
+    let touchStart = 0;
+    sfp.addEventListener('touchstart', e => touchStart = e.touches[0].clientY, { passive: true });
+    sfp.addEventListener('touchend', e => {
+      const dy = touchStart - (e.changedTouches[0]?.clientY||0);
+      if (dy > 60 && sfp.scrollHeight - sfp.clientHeight - sfp.scrollTop < 100) loadMoreShorts();
+    }, { passive: true });
+  }
+  setInterval(attachShortsScroll, 1500);
+
+  /* ---------- 動画再生を高速化: video要素に preload=auto + 早期再生 ---------- */
+  function speedupVideos(){
+    document.querySelectorAll('video').forEach(v => {
+      if (v.__speed) return; v.__speed = true;
+      try {
+        v.preload = 'auto';
+        v.setAttribute('playsinline','');
+        // canplay で即再生試行
+        const tryPlay = () => { try { v.play().catch(()=>{}); } catch(_){} };
+        v.addEventListener('loadedmetadata', tryPlay, { once:true });
+        v.addEventListener('canplay', tryPlay, { once:true });
+      } catch(_){}
+    });
+  }
+  const mo = new MutationObserver(() => speedupVideos());
+  mo.observe(document.body, { childList:true, subtree:true });
+  setInterval(speedupVideos, 1000);
+
+  /* ---------- 次の動画: 視聴中の動画との関連性で並び替え ---------- */
+  function currentVideoMeta(){
+    const title = (document.querySelector('#api-title, .video-title-main, #video-title') || {}).textContent || '';
+    const channel = (document.querySelector('#api-author, .video-channel-name, #channel-name') || {}).textContent || '';
+    return { title, channel };
+  }
+  function tokenize(s){ return (s||'').toLowerCase().split(/[\s\u3000,、。!?！？\[\]【】「」『』()（）]+/).filter(t => t.length>=2); }
+  function relSort(){
+    const list = document.querySelector('#recommendations, .recommendations, .next-videos, #related-videos, .related-list');
+    if (!list || list.__patchedRel) return;
+    list.__patchedRel = true;
+    const reorder = () => {
+      const meta = currentVideoMeta();
+      const tokens = new Set(tokenize(meta.title));
+      const cards = Array.from(list.querySelectorAll('.video-card, .rec-card, .video-item'));
+      cards.forEach(c => {
+        const t = (c.querySelector('.video-title, .rec-title') || {}).textContent || '';
+        const ch = (c.querySelector('.video-meta-channel, .rec-channel') || {}).textContent || '';
+        let s = 0;
+        tokenize(t).forEach(w => { if (tokens.has(w)) s += 2; });
+        if (ch && meta.channel && ch.trim() === meta.channel.trim()) s += 10;
+        c.__rel = s;
+      });
+      cards.sort((a,b) => (b.__rel||0) - (a.__rel||0));
+      cards.forEach(c => list.appendChild(c));
+    };
+    setTimeout(reorder, 800);
+    setTimeout(reorder, 2500);
+  }
+  setInterval(relSort, 2000);
+
+  console.log('[仲良しTube patch2] loaded');
+})();
+</script>
+
+<script>
+/* ============ 仲良しTube 追加修正パッチ ============ */
+(function(){
+  // --- 7) URL末尾の #gsc.* を自動除去 ---
+  function stripGscHash(){
+    try {
+      const h = location.hash || '';
+      if (/(^|[#&])gsc\.(tab|q|sort|page)=/.test(h)) {
+        const cleaned = h.replace(/(?:^#|&)gsc\.[^&]*/g, '').replace(/^#&?/, '#').replace(/^#$/, '');
+        const url = location.pathname + location.search + cleaned;
+        history.replaceState(history.state, '', url);
+      }
+    } catch(_){}
+  }
+  window.addEventListener('hashchange', stripGscHash, true);
+  setInterval(stripGscHash, 800);
+  stripGscHash();
+
+  // --- 3) 成功率を定期更新 ---
+  function loadApiStats(){
+    try { return JSON.parse(localStorage.getItem('nyt_api_stats')||'{}'); } catch(_) { return {}; }
+  }
+  function updateSuccessRate(){
+    const el = document.getElementById('api-success-rate-value');
+    if (!el) return;
+    const stats = loadApiStats();
+    let ok = 0, total = 0;
+    Object.values(stats).forEach(s => { if (s && typeof s.ok === 'number'){ ok += s.ok; total += s.ok + (s.fail||0); } });
+    if (total === 0){ el.textContent = '--%'; el.parentElement.title = 'まだ計測データがありません'; return; }
+    const rate = Math.round(ok/total*100);
+    el.textContent = rate + '%';
+    el.style.color = rate >= 80 ? '#22c55e' : rate >= 50 ? '#eab308' : '#ef4444';
+    el.parentElement.title = `成功 ${ok} / 試行 ${total}`;
+  }
+  setInterval(updateSuccessRate, 2500);
+  setTimeout(updateSuccessRate, 800);
+
+  // --- 4) 検索しても結果が出ない時のフォールバック（強化版） ---
+  // isFetchingが永続的にtrueになるのを防ぐ（CSE未到達ハング対策）
+  setInterval(() => {
+    try {
+      if (window.isFetching) {
+        if (!window.__fetchStuckSince) window.__fetchStuckSince = Date.now();
+        else if (Date.now() - window.__fetchStuckSince > 8000) {
+          window.isFetching = false;
+          window.__fetchStuckSince = 0;
+        }
+      } else { window.__fetchStuckSince = 0; }
+    } catch(_){}
+  }, 1500);
+
+  // 直接 Invidious + Piped を並列で叩いて検索結果を作る（CSE非依存）
+  async function directInvidiousSearch(query){
+    // Piped 並列タスク
+    const piped = (window.PIPED_INSTANCES || []).slice(0, 6).map(inst => {
+      const url = `${inst}/search?q=${encodeURIComponent(query)}&filter=videos`;
+      const finalUrl = (typeof buildFetchUrl === 'function') ? buildFetchUrl(url) : url;
+      return fetch(finalUrl, { signal: AbortSignal.timeout(5500) })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          const items = (d && (d.items || d.results)) || [];
+          return items.map(it => {
+            const id = (it.url || it.videoId || '').match(/[a-zA-Z0-9_-]{11}/)?.[0];
+            if (!id) return null;
+            return {
+              id, title: it.title || '', channel: it.uploaderName || it.author || '',
+              isShort: it.duration > 0 && it.duration <= 61,
+              isLive: !!it.isLive, duration: it.duration || 0,
+              published: it.uploadedDate || it.uploaded || '',
+              viewCount: it.views || 0,
+              authorThumb: it.uploaderAvatar || `https://i.pravatar.cc/72?u=${encodeURIComponent(it.uploaderName||'')}`
+            };
+          }).filter(Boolean);
+        })
+        .catch(() => []);
+    });
+    Promise.allSettled(piped).then(rs => {
+      const merged = [];
+      const seenP = new Set();
+      rs.forEach(r => { if (r.status==='fulfilled' && Array.isArray(r.value)) r.value.forEach(v => { if (!seenP.has(v.id)) { seenP.add(v.id); merged.push(v);} }); });
+      if (merged.length && window.__needSearchInject) {
+        try {
+          if (typeof seenVideoIds !== 'undefined' && seenVideoIds && seenVideoIds.clear) seenVideoIds.clear();
+          window.searchContext = 'search';
+          if (typeof window.renderResults === 'function') window.renderResults(merged, false);
+          window.__needSearchInject = false;
+          const loader = document.getElementById('search-loader');
+          if (loader) loader.classList.add('hidden');
+        } catch(_){}
+      }
+    });
+    window.__needSearchInject = true;
+
+    const insts = (typeof getInvidiousFor === 'function')
+      ? getInvidiousFor('search')
+      : (window.INVIDIOUS_INSTANCES || [
+          'https://invidious.f5.si','https://yt.omada.cafe','https://inv.nadeko.net',
+          'https://invidious.privacyredirect.com','https://invidious.materialio.us'
+        ]);
+    const seen = new Set();
+    const out = [];
+    const tasks = insts.slice(0, 8).map(inst => {
+      const url = `${inst}/api/v1/search?q=${encodeURIComponent(query)}&type=video&hl=ja&region=JP`;
+      const finalUrl = (typeof buildFetchUrl === 'function') ? buildFetchUrl(url) : url;
+      return fetch(finalUrl, { signal: AbortSignal.timeout(5500) })
+        .then(r => r.ok ? r.json() : null)
+        .then(arr => {
+          if (!Array.isArray(arr)) return;
+          for (const item of arr){
+            if (item && item.type === 'video' && item.videoId && !seen.has(item.videoId)){
+              seen.add(item.videoId);
+              out.push({
+                id: item.videoId,
+                title: item.title || '',
+                channel: item.author || '',
+                isShort: item.lengthSeconds > 0 && item.lengthSeconds <= 61,
+                isLive: !!item.liveNow,
+                duration: item.lengthSeconds || 0,
+                published: item.publishedText || '',
+                viewCount: item.viewCount || 0,
+                authorThumb: (item.authorThumbnails && item.authorThumbnails[0]) ? item.authorThumbnails[0].url : `https://i.pravatar.cc/72?u=${encodeURIComponent(item.author||'')}`
+              });
+            }
+          }
+        })
+        .catch(() => null);
+    });
+    await Promise.allSettled(tasks);
+    return out;
+  }
+
+  let _retryToken = 0;
+  function watchSearchResults(query){
+    const myTok = ++_retryToken;
+    let tries = 0;
+    const tick = async () => {
+      if (myTok !== _retryToken) return;
+      const grid = document.getElementById('search-results-list');
+      const have = grid ? grid.querySelectorAll('.video-card,.video-item,.search-result-item').length : 0;
+      if (have > 0) {
+        const loader = document.getElementById('search-loader');
+        if (loader) loader.classList.add('hidden');
+        return;
+      }
+      tries++;
+      if (tries > 6) {
+        const loader = document.getElementById('search-loader');
+        if (loader) { const t = loader.querySelector('.loader-text'); if (t) t.textContent = '結果が見つかりません'; }
+        return;
+      }
+      window.isFetching = false;
+      // 1) 直接 Invidious 並列検索
+      try {
+        const videos = await directInvidiousSearch(query);
+        if (videos.length > 0 && typeof window.renderResults === 'function'){
+          if (typeof seenVideoIds !== 'undefined' && seenVideoIds && seenVideoIds.clear) seenVideoIds.clear();
+          window.searchContext = 'search';
+          window.renderResults(videos, false);
+          const loader = document.getElementById('search-loader');
+          if (loader) loader.classList.add('hidden');
+          return;
+        }
+      } catch(_){}
+      // 2) クエリ変形で triggerSearch を再実行
+      try {
+        const variants = [query, query+' 動画', query+' YouTube', query.replace(/\s+/g,'')+' #shorts', query.split(/\s+/)[0]];
+        const q2 = variants[tries % variants.length] || query;
+        if (typeof window.triggerSearch === 'function') window.triggerSearch(q2, 'search');
+      } catch(_){}
+      setTimeout(tick, 2000);
+    };
+    setTimeout(tick, 1500);
+  }
+  const _origHS = window.handleSearch;
+  if (typeof _origHS === 'function'){
+    window.handleSearch = function(e, externalQuery){
+      window.isFetching = false; // 前回ハング解除
+      const r = _origHS.apply(this, arguments);
+      const q = externalQuery || (document.getElementById('search-input')||{}).value;
+      if (q) watchSearchResults(q);
+      return r;
+    };
+  }
+
+  // --- 5) どのデバイスでもShortsを表示 ---
+  function ensureShortsVisible(){
+    const sec = document.getElementById('home-shorts');
+    const cont = document.getElementById('home-shorts-container');
+    if (!sec || !cont) return;
+    const hasItems = cont.querySelectorAll('.home-short-card').length > 0;
+    if (hasItems) sec.classList.remove('hidden');
+    else if (typeof fetchShortsForHome === 'function'){
+      try { fetchShortsForHome(); } catch(_){}
+    }
+  }
+  setTimeout(ensureShortsVisible, 3500);
+  setTimeout(ensureShortsVisible, 8000);
+  setTimeout(ensureShortsVisible, 15000);
+  // ホームに戻る／リサイズ時にも再チェック
+  window.addEventListener('resize', () => setTimeout(ensureShortsVisible, 200));
+
+  // --- 6) 関連動画を確実に表示 ---
+  function ensureRelated(){
+    const wrap = document.getElementById('related-videos');
+    const loader = document.getElementById('related-loader');
+    if (!wrap) return;
+    const have = wrap.querySelectorAll('.related-video').length;
+    if (have > 0){ loader && loader.classList.add('hidden'); return; }
+    if (!window.currentVideoTitle) return;
+    try {
+      window.isFetching = false;
+      const q = (window.currentVideoTitle||'').substring(0, 20) || (window.currentChannelName||'人気');
+      if (typeof window.triggerSearch === 'function') window.triggerSearch(q, 'related');
+    } catch(_){}
+  }
+  const _origPV = window.playVideo;
+  if (typeof _origPV === 'function'){
+    window.playVideo = function(){
+      const r = _origPV.apply(this, arguments);
+      [2500, 6000, 12000].forEach(t => setTimeout(ensureRelated, t));
+      return r;
+    };
+  }
+})();
+</script>
 </body>
 </html>
