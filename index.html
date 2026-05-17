@@ -4,8 +4,38 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>仲良しTube</title>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-<script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+<!-- 速度最適化: 主要APIホストへ事前接続 -->
+<link rel="preconnect" href="https://corsproxy.io" crossorigin>
+<link rel="preconnect" href="https://api.allorigins.win" crossorigin>
+<link rel="preconnect" href="https://api.codetabs.com" crossorigin>
+<link rel="preconnect" href="https://inv.nadeko.net" crossorigin>
+<link rel="preconnect" href="https://invidious.nerdvpn.de" crossorigin>
+<link rel="preconnect" href="https://invidious.privacyredirect.com" crossorigin>
+<link rel="preconnect" href="https://pipedapi.kavin.rocks" crossorigin>
+<link rel="preconnect" href="https://pipedapi-libre.kavin.rocks" crossorigin>
+<link rel="preconnect" href="https://pipedapi.adminforge.de" crossorigin>
+<link rel="dns-prefetch" href="https://yewtu.be">
+<link rel="dns-prefetch" href="https://invidious.f5.si">
+<link rel="dns-prefetch" href="https://iv.melmac.space">
+<link rel="dns-prefetch" href="https://yt.omada.cafe">
+<link rel="dns-prefetch" href="https://min-pro.duckdns.org">
+<!-- hls はサイト全般で軽量に使うので defer、dash は動画再生まで遅延ロード -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js" defer></script>
+<script>
+  // dash.js は重い (≈1MB) ので、再生開始時にだけロード
+  window.__loadDashJs = function(){
+    if (window.__dashLoading) return window.__dashLoading;
+    return window.__dashLoading = new Promise(function(res, rej){
+      if (window.dashjs) return res(window.dashjs);
+      var s = document.createElement('script');
+      s.src = 'https://cdn.dashjs.org/latest/dash.all.min.js';
+      s.async = true;
+      s.onload = function(){ res(window.dashjs); };
+      s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  };
+</script>
 <style>
 :root {
   --bg-color: #ffffff;
@@ -179,15 +209,19 @@ main.sidebar-open { margin-left: 240px; }
 .recommend-title svg { width: 22px; height: 22px; fill: var(--primary-color); stroke: none; }
  
 .search-results-list { display: flex; flex-direction: column; gap: 12px; }
-.search-result-item {
-  display: flex; gap: 16px; cursor: pointer; padding: 4px; border-radius: 8px; transition: background 0.15s;
-}
-.search-result-item:hover { background: var(--hover-color); }
-.search-result-thumb {
-  flex-shrink: 0; width: 360px; aspect-ratio: 16/9; border-radius: 10px;
-  overflow: hidden; background: var(--hover-color); position: relative;
-}
-.search-result-thumb img { width: 100%; height: 100%; object-fit: cover; }
+ .search-result-item {
+   display: flex; gap: 16px; cursor: pointer; padding: 4px; border-radius: 8px; transition: background 0.15s, transform 0.2s;
+ }
+ .search-result-item:hover { background: var(--hover-color); transform: translateY(-4px); }
+ .search-result-item:hover .search-result-thumb { box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+ .search-result-item:hover .search-result-title { text-decoration-color: currentColor; }
+ [data-theme="dark"] .search-result-item:hover .search-result-title { color: #ff3030; }
+ .search-result-item:hover .search-result-thumb img { transform: scale(1.05); }
+ .search-result-thumb {
+   flex-shrink: 0; width: 360px; aspect-ratio: 16/9; border-radius: 10px;
+   overflow: hidden; background: var(--hover-color); position: relative;
+ }
+ .search-result-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s; }
 .search-result-info { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
 .search-result-title { font-size: 18px; font-weight: 400; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .search-result-meta { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
@@ -723,9 +757,8 @@ input:checked + .slider:before { transform: translateX(20px); }
     <div class="access-counter" id="access-counter" style="display:none !important;">
       <span id="access-counter-value">---</span>
     </div>
-    <div class="access-counter" id="api-success-rate" title="API成功率（直近）">
-      <svg viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-      <span class="ac-label">成功率</span><span id="api-success-rate-value">--%</span>
+    <div class="access-counter" id="app-version-badge" title="バージョン">
+      <span class="ac-label">ver 1.7</span>
     </div>
     <button class="icon-btn" onclick="toggleTheme()" title="テーマ切り替え">
       <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"></path></svg>
@@ -5668,30 +5701,7 @@ window.fetchExtraSearch = async function(query){
     };
   }
 
-  /* ---------- 8) アクセス数 (回視聴) を非表示 ---------- */
-  try {
-    const _origFormatViews = window.formatViews;
-    window.formatViews = function(){ return ''; };
-  } catch(_){}
-  const css = document.createElement('style');
-  css.textContent = `
-    /* 動画カード内の視聴回数を非表示 */
-    .video-meta span:first-child:not(:empty) { }
-    .video-meta { gap:4px; }
-    /* "回視聴" を含むテキストは表示しない */
-    #api-views, .video-meta span.views, .vh-meta { }
-  `;
-  document.head.appendChild(css);
-  // DOM 走査で「回視聴」を含む要素を消す（軽量）
-  function purgeViewsText(root){
-    try {
-      const nodes = (root||document).querySelectorAll('.video-meta span, .vh-meta');
-      nodes.forEach(n => { if (/回視聴/.test(n.textContent)) n.style.display = 'none'; });
-    } catch(_){}
-  }
-  const mo = new MutationObserver(() => purgeViewsText());
-  mo.observe(document.body, { childList:true, subtree:true });
-  setInterval(purgeViewsText, 1500);
+  /* ---------- 8) 視聴回数表示は元の挙動を維持 ---------- */
 
   /* ---------- 9) m.youtube.com / www.youtube.com でもチャンネル取得 ---------- */
   function extractVideoId(u){
@@ -6374,6 +6384,133 @@ window.fetchExtraSearch = async function(query){
       const r = _origPV.apply(this, arguments);
       [2500, 6000, 12000].forEach(t => setTimeout(ensureRelated, t));
       return r;
+    };
+  }
+})();
+</script>
+<script>
+/* ============================================================
+   検索成功率ブースター v2
+   - 信頼度の高いインスタンスをプール先頭に追加
+   - Piped/Invidious/Min-Pro を並列レースし、最速のヒットを採用
+   - 既存 fetchFromInvidious はフォールバックとして残す
+   ============================================================ */
+(function(){
+  var RELIABLE_INV = [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.privacyredirect.com',
+    'https://invidious.f5.si',
+    'https://iv.melmac.space',
+    'https://yt.omada.cafe',
+    'https://invidious.materialio.us',
+    'https://y.com.sb',
+    'https://invidious.private.coffee',
+    'https://invidious.perennialte.ch',
+    'https://yewtu.be'
+  ];
+  var RELIABLE_PIPED = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi-libre.kavin.rocks',
+    'https://pipedapi.adminforge.de',
+    'https://pipedapi.r4fo.com',
+    'https://pipedapi.darkness.services',
+    'https://api-piped.mha.fi'
+  ];
+  try {
+    if (Array.isArray(window.INVIDIOUS_INSTANCES)) {
+      var seen = new Set();
+      window.INVIDIOUS_INSTANCES = [].concat(RELIABLE_INV, window.INVIDIOUS_INSTANCES)
+        .filter(function(u){ if(!u||seen.has(u))return false; seen.add(u); return true; });
+    }
+    if (Array.isArray(window.PIPED_INSTANCES)) {
+      var seen2 = new Set();
+      window.PIPED_INSTANCES = [].concat(RELIABLE_PIPED, window.PIPED_INSTANCES)
+        .filter(function(u){ if(!u||seen2.has(u))return false; seen2.add(u); return true; });
+    } else {
+      window.PIPED_INSTANCES = RELIABLE_PIPED.slice();
+    }
+  } catch(_){}
+
+  // ---- 並列レース検索（最初に有効な結果を返したものを採用） ----
+  function raceFirst(promises, timeoutMs){
+    return new Promise(function(resolve){
+      var done = false, remaining = promises.length;
+      if (!remaining) return resolve(null);
+      var timer = setTimeout(function(){ if(!done){ done=true; resolve(null);} }, timeoutMs||9000);
+      promises.forEach(function(p){
+        Promise.resolve(p).then(function(v){
+          if (done) return;
+          if (v && (Array.isArray(v) ? v.length : true)) {
+            done = true; clearTimeout(timer); resolve(v);
+          } else if (--remaining === 0 && !done) { done=true; clearTimeout(timer); resolve(null); }
+        }).catch(function(){
+          if (--remaining === 0 && !done) { done=true; clearTimeout(timer); resolve(null); }
+        });
+      });
+    });
+  }
+
+  function mapPipedToInv(it){
+    if (!it || !it.url) return null;
+    var id = (it.url.match(/[?&]v=([\w-]{6,})/)||[])[1];
+    if (!id) return null;
+    return {
+      type:'video', videoId:id,
+      title: it.title||'',
+      author: it.uploaderName||'',
+      authorId: (it.uploaderUrl||'').replace(/^\/channel\//,''),
+      authorThumbnails: it.uploaderAvatar ? [{url: it.uploaderAvatar}] : [],
+      videoThumbnails: it.thumbnail ? [{url: it.thumbnail}] : [],
+      lengthSeconds: it.duration||0,
+      viewCount: it.views||0,
+      publishedText: it.uploadedDate||'',
+      liveNow: !!it.live
+    };
+  }
+
+  function pipedSearch(query){
+    var q = encodeURIComponent(query);
+    return RELIABLE_PIPED.map(function(inst){
+      return fetch(inst+'/search?q='+q+'&filter=videos', { signal: AbortSignal.timeout(5500) })
+        .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+        .then(function(d){
+          var arr = (d && (d.items||d)) || [];
+          arr = arr.map(mapPipedToInv).filter(Boolean);
+          if (!arr.length) throw 0;
+          return arr;
+        });
+    });
+  }
+  function invidiousSearch(query, page){
+    var path = '/api/v1/search?q='+encodeURIComponent(query)+'&page='+(page||1)+'&hl=ja&region=JP';
+    var bf = (typeof window.buildFetchUrl==='function') ? window.buildFetchUrl : function(x){return x;};
+    return RELIABLE_INV.map(function(inst){
+      return fetch(bf(inst+path), { signal: AbortSignal.timeout(5500) })
+        .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+        .then(function(d){ if(!Array.isArray(d)||!d.length) throw 0; return d; });
+    });
+  }
+  function minproSearch(query){
+    return [ fetch('https://min-pro.duckdns.org/api/search?q='+encodeURIComponent(query), { signal: AbortSignal.timeout(5500) })
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(function(d){ if(!d||!d.length) throw 0; return d; }) ];
+  }
+
+  // fetchFromInvidious をブースト版でラップ（検索時のみ）
+  if (typeof window.fetchFromInvidious === 'function') {
+    var _orig = window.fetchFromInvidious;
+    window.fetchFromInvidious = async function(query, context, page){
+      if (context !== 'search') return await _orig(query, context, page);
+      var all = [].concat(
+        invidiousSearch(query, page||1),
+        pipedSearch(query),
+        minproSearch(query)
+      );
+      var fast = await raceFirst(all, 7000);
+      if (fast && fast.length) return fast;
+      // フォールバック: 元実装（広範な CORSプロキシ＋全インスタンス）
+      try { return await _orig(query, context, page); } catch(_) { return null; }
     };
   }
 })();
