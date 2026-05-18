@@ -758,10 +758,13 @@ input:checked + .slider:before { transform: translateX(20px); }
       <span id="access-counter-value">---</span>
     </div>
     <div class="access-counter" id="app-version-badge" title="バージョン">
-      <span class="ac-label">ver 1.7.1</span>
+      <span class="ac-label">ver 1.7.6</span>
     </div>
     <button class="icon-btn" onclick="toggleTheme()" title="テーマ切り替え">
       <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"></path></svg>
+    </button>
+    <button class="icon-btn" onclick="location.hash='#/plus-home'" title="Plus Home" id="plus-home-btn">
+      <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M12 3 4 9v12h5v-7h6v7h5V9z"/></svg>
     </button>
   </div>
 </header>
@@ -1263,7 +1266,41 @@ input:checked + .slider:before { transform: translateX(20px); }
       </div>
     </div>
   </div>
- 
+
+  <div id="view-plus-home" class="view">
+    <div class="plus-home-wrap">
+      <div class="ph-grid-bg"></div>
+      <div class="ph-scanline"></div>
+      <header class="ph-hero">
+        <div class="ph-badge">SYSTEM ONLINE // v1.7.6</div>
+        <h1 class="ph-title" data-text="仲良しTubeへようこそ">仲良しTubeへようこそ</h1>
+        <div class="ph-subtitle">&gt;&gt; PLUS HOME TERMINAL &nbsp;//&nbsp; READY</div>
+        <div class="ph-bars"><span></span><span></span><span></span><span></span><span></span></div>
+      </header>
+      <section class="ph-panel">
+        <div class="ph-panel-head"><span class="ph-dot"></span> MODULE_01</div>
+        <h2 class="ph-panel-title">Proxy</h2>
+        <div class="ph-panel-body">
+          <div class="ph-meta">// STATUS</div>
+          <div class="ph-impl">実装予定</div>
+        </div>
+      </section>
+      <section class="ph-panel ph-launch" onclick="location.hash='#/gust'">
+        <div class="ph-panel-head"><span class="ph-dot"></span> MODULE_02</div>
+        <h2 class="ph-panel-title">GUST</h2>
+        <div class="ph-panel-body">
+          <div class="ph-meta">// LAUNCH</div>
+          <div class="ph-launch-btn">&gt; /#/gust  ENTER</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="view-gust" class="view ext-view">
+    <iframe id="gust-frame" class="ext-frame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals allow-pointer-lock allow-downloads"></iframe>
+    <div class="ext-loading" id="gust-loading">Loading GUST...</div>
+  </div>
+
 </main>
 <div class="add-to-playlist-modal" id="add-to-playlist-modal" onclick="if(event.target===this)closeAddToPlaylist()">
   <div class="add-to-playlist-box">
@@ -1402,6 +1439,101 @@ function getInvidiousFor(role) {
     ? INVIDIOUS_ROLES[role]
     : INVIDIOUS_INSTANCES.slice(0, 12);
 }
+
+// =================== 最速 Invidious インスタンス自動選定 ===================
+// 全インスタンスに軽量リクエストを送り、最速で応答した上位 5 件を使う
+// 結果は 5 分間 sessionStorage にキャッシュ
+const FAST_INV_CACHE_KEY = '__fastInvInstances_v1';
+const FAST_INV_TTL_MS = 5 * 60 * 1000;
+const FAST_INV_TOP_N = 3;
+const FAST_INV_TIMEOUT_MS = 2500;
+let _fastInvPromise = null;
+let _fastInvList = null;
+
+(function _loadFastInvFromCache(){
+  try {
+    const raw = sessionStorage.getItem(FAST_INV_CACHE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (obj && Array.isArray(obj.list) && obj.list.length && (Date.now() - obj.ts) < FAST_INV_TTL_MS) {
+      _fastInvList = obj.list;
+    }
+  } catch(_) {}
+})();
+
+function _pingInvidious(base, timeoutMs) {
+  // /api/v1/stats は軽量・CORS可で生死/速度の指標になる
+  const url = base.replace(/\/$/, '') + '/api/v1/stats';
+  const start = performance.now();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { method: 'GET', signal: ctrl.signal, cache: 'no-store', mode: 'cors' })
+    .then(r => {
+      clearTimeout(t);
+      if (!r.ok) throw new Error('bad status ' + r.status);
+      return { base, ms: performance.now() - start };
+    })
+    .catch(e => { clearTimeout(t); throw e; });
+}
+
+function refreshFastInvidious(force) {
+  if (!force && _fastInvList && _fastInvList.length) return Promise.resolve(_fastInvList);
+  if (_fastInvPromise) return _fastInvPromise;
+  const top = [];
+  _fastInvPromise = new Promise((resolve) => {
+    let finished = false;
+    let remaining = INVIDIOUS_INSTANCES.length;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      const list = top.slice(0, FAST_INV_TOP_N).map(x => x.base);
+      if (list.length) {
+        _fastInvList = list;
+        try { sessionStorage.setItem(FAST_INV_CACHE_KEY, JSON.stringify({ ts: Date.now(), list })); } catch(_) {}
+        console.log('[FastInv] top', list);
+      }
+      _fastInvPromise = null;
+      resolve(_fastInvList || []);
+    };
+    INVIDIOUS_INSTANCES.forEach(base => {
+      _pingInvidious(base, FAST_INV_TIMEOUT_MS)
+        .then(res => {
+          top.push(res);
+          top.sort((a,b) => a.ms - b.ms);
+          // 上位 N 揃った時点で早期確定（残りは待たない）
+          if (top.length >= FAST_INV_TOP_N) done();
+        })
+        .catch(()=>{})
+        .finally(() => {
+          if (--remaining <= 0) done();
+        });
+    });
+    // 全体タイムアウト（保険）
+    setTimeout(done, FAST_INV_TIMEOUT_MS + 500);
+  });
+  return _fastInvPromise;
+}
+
+// 起動時にバックグラウンドで計測開始（ブロックしない）
+try { setTimeout(() => refreshFastInvidious(false), 200); } catch(_) {}
+
+// getInvidiousFor を上書き：最速リストがあればそれを優先、無ければ従来ロジック
+const _origGetInvidiousFor = getInvidiousFor;
+getInvidiousFor = function(role) {
+  if (_fastInvList && _fastInvList.length) {
+    // 最速 N 件 + 従来のロール別フォールバックを後ろに連結（重複排除）
+    const fallback = _origGetInvidiousFor(role) || [];
+    const seen = new Set();
+    const merged = [];
+    for (const u of _fastInvList.concat(fallback)) {
+      if (!seen.has(u)) { seen.add(u); merged.push(u); }
+    }
+    return merged;
+  }
+  // まだ未計測なら、裏で計測を走らせつつ従来リストを返す
+  refreshFastInvidious(false);
+  return _origGetInvidiousFor(role);
+};
 
 // 投稿日が1年以内かどうか（不明はtrueにして除外しすぎないようにする）
 function _isWithinOneYear(item) {
@@ -1545,6 +1677,14 @@ function initApp() {
     navigate('welcome', { noHistory: true });
   } else if (urlState && urlState.view === 'watch' && urlState.videoId) {
     navigate('home', { noHistory: true });
+    if (urlState.streamMode) {
+      try {
+        const _c = JSON.parse(localStorage.getItem('study2525_config')||'{}');
+        const _m = urlState.streamMode === 'edu' ? 2 : urlState.streamMode === 'ytdlp' ? 3 : 1;
+        _c.stream = _m; _c.shortStream = _m;
+        localStorage.setItem('study2525_config', JSON.stringify(_c));
+      } catch(e){}
+    }
     fetch(`https://inv.nadeko.net/api/v1/videos/${urlState.videoId}?fields=title,author,authorThumbnails&hl=ja&region=JP`)
       .then(r => r.json()).then(d => {
         playVideo(urlState.videoId, d.title || urlState.videoId, d.author || '', d.authorThumbnails?.[0]?.url || null, true);
@@ -3733,6 +3873,14 @@ async function switchStream(type) {
     if (typeof shortStreamType !== 'undefined') shortStreamType = type;
     if (typeof syncSettings === 'function') syncSettings({...c});
   } catch(e){}
+  // URLハッシュに再生方法を反映
+  try {
+    if (currentVideoId) {
+      const _sfx = type === 2 ? '&edu' : type === 3 ? '&ytdlp' : '&nc';
+      const _newHash = `#/watch?v=${currentVideoId}${_sfx}`;
+      if (location.hash !== _newHash) history.replaceState(history.state, '', _newHash);
+    }
+  } catch(e){}
   document.getElementById('quality-wrap').style.display = 'none';
   currentGVFormats = null; currentGVAllFormats = null;
   const wrapper = document.getElementById('player-wrapper');
@@ -3843,7 +3991,16 @@ function navigate(viewName, opts = {}) {
     else if (viewName === 'search') hash = lastQuery ? `#/search?v=${encodeURIComponent(lastQuery)}` : '#/search';
     else if (viewName === 'channel') hash = currentChannelId ? `#/@${currentChannelId}` : '#/channel';
     else if (viewName === 'welcome') hash = '#/';
-    else if (viewName === 'watch' && opts.videoId) hash = `#/watch?v=${opts.videoId}`;
+    else if (viewName === 'watch' && opts.videoId) {
+      let _sfx = '';
+      try {
+        const _s = (JSON.parse(localStorage.getItem('study2525_config')||'{}')).stream;
+        if (_s === 2) _sfx = '&edu';
+        else if (_s === 3) _sfx = '&ytdlp';
+        else _sfx = '&nc';
+      } catch(e) { _sfx = '&nc'; }
+      hash = `#/watch?v=${opts.videoId}${_sfx}`;
+    }
     else if (viewName === 'shorts' && opts.videoId) hash = `#/shorts/${opts.videoId}`;
     else if (viewName === 'shorts') hash = '#/shorts';
     try { history.pushState({ view: viewName, ...opts }, '', hash); } catch(e) {}
@@ -3874,7 +4031,7 @@ function parseInitialUrl() {
   // ハッシュベースルーティングを優先
   let path = location.hash && location.hash.startsWith('#/') ? location.hash.slice(1) : (location.pathname + location.search);
   if(!path) path = '/';
-  const watchMatch = path.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+  const watchMatch = path.match(/\/watch\?v=([a-zA-Z0-9_-]{11})(?:&(edu|nc|ytdlp))?/);
   const shortsMatch = path.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
   // 新仕様: /#/search?v=keyword (旧 ?q= も後方互換)
   const searchMatchV = path.match(/\/search\?v=(.+)/);
@@ -3882,7 +4039,7 @@ function parseInitialUrl() {
   // 新仕様: /#/@channelId (旧 /channel/id も後方互換)
   const channelAtMatch = path.match(/\/@([a-zA-Z0-9_@.-]+)/);
   const channelMatch = path.match(/\/channel\/([a-zA-Z0-9_@-]+)/);
-  if (watchMatch) return { view: 'watch', videoId: watchMatch[1] };
+  if (watchMatch) return { view: 'watch', videoId: watchMatch[1], streamMode: watchMatch[2] || null };
   if (shortsMatch) return { view: 'shorts', videoId: shortsMatch[1] };
   if (searchMatchV) return { view: 'search', query: decodeURIComponent(searchMatchV[1]) };
   if (searchMatchQ) return { view: 'search', query: decodeURIComponent(searchMatchQ[1]) };
@@ -4970,7 +5127,8 @@ window.fetchExtraSearch = async function(query){
   // --- ストレージキー ---
   const STATS_KEY = 'nyt_api_stats_v1';
   const PRIO_KEY  = 'nyt_api_priority_v1';
-  const FILT_KEY  = 'nyt_video_filter_v1'; // 'all' | 'japan'
+  const FILT_KEY  = 'nyt_video_filter_v1'; // 'all' | 'new'
+  const TIER_KEY  = 'nyt_api_tier_v1';     // ['inv','piped','min']
 
   // --- API stats: ホスト名ごとの success/fail を記録 ---
   function loadStats(){ try { return JSON.parse(localStorage.getItem(STATS_KEY)||'{}'); } catch(e){ return {}; } }
@@ -5022,20 +5180,39 @@ window.fetchExtraSearch = async function(query){
     window.getInvidiousFor = function(role){ return applyPriority(_orig(role)); };
   }
 
-  // --- 日本語動画フィルター ---
+  // --- 動画フィルター (すべて / 新着) ---
   function getFilter(){ return localStorage.getItem(FILT_KEY) || 'all'; }
   function setFilter(v){ try { localStorage.setItem(FILT_KEY, v); } catch(e){} }
-  window.isJapaneseVideo = function(v){
-    const txt = (v && ((v.title||'') + ' ' + (v.channel||v.author||''))) || '';
-    return /[\u3040-\u309F\u30A0-\u30FF]/.test(txt); // ひらがな or カタカナ
+  window.isNewVideo = function(v){
+    if (!v) return false;
+    const ts = v.publishedTimestamp || v.published || 0;
+    if (ts && ts > 1000000000) {
+      const nowSec = Date.now()/1000;
+      return (nowSec - ts) <= 30*86400; // 30日以内
+    }
+    const txt = String(v.publishedText || v.published || '');
+    if (/(\d+)\s*年前|years?\s*ago/i.test(txt)) return false;
+    if (/(\d+)\s*[ヶか]月前|months?\s*ago/i.test(txt)) {
+      const n = parseInt(RegExp.$1||'0'); return n <= 1;
+    }
+    if (/分前|時間前|日前|週間前|minutes?\s*ago|hours?\s*ago|days?\s*ago|weeks?\s*ago/i.test(txt)) return true;
+    return false;
   };
+  // --- API階層優先度 (inv / piped / min) ---
+  const DEFAULT_TIER = ['inv','piped','min'];
+  function loadTier(){
+    try { const a = JSON.parse(localStorage.getItem(TIER_KEY)||'null'); if (Array.isArray(a) && a.length===3) return a; } catch(e){}
+    return DEFAULT_TIER.slice();
+  }
+  function saveTier(a){ try { localStorage.setItem(TIER_KEY, JSON.stringify(a)); } catch(e){} }
+  window.getApiTierOrder = loadTier;
   // renderResults をさらにラップ
   const wrapRender = () => {
     if (typeof window.renderResults !== 'function') return false;
     const orig = window.renderResults;
     window.renderResults = function(videos, append){
       let v = videos || [];
-      if (getFilter() === 'japan') v = v.filter(window.isJapaneseVideo);
+      if (getFilter() === 'new') v = v.filter(window.isNewVideo);
       return orig(v, append);
     };
     return true;
@@ -5061,7 +5238,19 @@ window.fetchExtraSearch = async function(query){
   let _retryTimer = null;
   async function streamHome(token, targetCount){
     targetCount = targetCount || 24;
-    const pool = (typeof getInvidiousFor === 'function') ? getInvidiousFor('trend') : ((window.INVIDIOUS_INSTANCES||[]).slice(0,20));
+    // 最速インスタンスの計測を最大 2.5 秒だけ待ってから取得開始
+    try {
+      if (typeof refreshFastInvidious === 'function') {
+        await Promise.race([
+          refreshFastInvidious(false),
+          new Promise(r => setTimeout(r, 2500))
+        ]);
+      }
+    } catch(_) {}
+    if (token !== _homeLoadToken) return 0;
+    const pool = (typeof getInvidiousFor === 'function')
+      ? getInvidiousFor('trend')
+      : ((window.INVIDIOUS_INSTANCES||[]).slice());
     const paths = [
       '/api/v1/trending?region=JP&hl=ja',
       '/api/v1/popular?region=JP&hl=ja',
@@ -5108,9 +5297,9 @@ window.fetchExtraSearch = async function(query){
         .catch(() => null);
     };
 
-    // 全instance × 全path を並列発射(キャップあり)
+    // 全instance × 全path を並列発射（キャップ無し：確実に取得するため全部に投げる）
     const tasks = [];
-    pool.slice(0, 16).forEach(inst => paths.forEach(p => tasks.push(tryFetch(inst, p))));
+    pool.forEach(inst => paths.forEach(p => tasks.push(tryFetch(inst, p))));
     await Promise.allSettled(tasks);
     return buffer.length;
   }
@@ -5132,6 +5321,10 @@ window.fetchExtraSearch = async function(query){
       if (loader) {
         const txt = loader.querySelector('.loader-text');
         if (txt) txt.textContent = attempt === 1 ? '動画を読み込み中...' : `動画を読み込み中... (再試行 ${attempt})`;
+      }
+      // リトライ時は最速インスタンス計測を強制リフレッシュ（前回失敗したサーバを差し替える）
+      if (attempt > 1) {
+        try { if (typeof refreshFastInvidious === 'function') await refreshFastInvidious(true); } catch(_) {}
       }
       let got = 0;
       try { got = await streamHome(myToken, 24); } catch(e) { console.warn('streamHome', e); }
@@ -5161,63 +5354,119 @@ window.fetchExtraSearch = async function(query){
     const panel = document.querySelector('#view-settings .settings-panel');
     if (!panel || panel.querySelector('#nyt-api-dashboard-section')) return;
 
-    // 1) API成功率ダッシュボード
-    const dashSec = document.createElement('div');
-    dashSec.className = 'settings-section';
-    dashSec.id = 'nyt-api-dashboard-section';
-    dashSec.innerHTML = `
-      <div class="settings-section-title">API成功率ダッシュボード</div>
-      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-        <button onclick="renderApiDashboard()" style="padding:6px 14px;border-radius:16px;background:var(--chip-bg);font-size:13px;">更新</button>
-        <button onclick="resetApiStats()" style="padding:6px 14px;border-radius:16px;background:var(--chip-bg);font-size:13px;">統計をリセット</button>
-      </div>
-      <div id="nyt-api-dashboard" style="max-height:320px;overflow-y:auto;font-size:13px;"></div>
-    `;
-    panel.appendChild(dashSec);
+    const CARD = 'background:var(--card-bg,var(--bg-color));border:1px solid var(--border-color);border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04);';
+    const TITLE = 'font-size:16px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px;';
+    const DESC = 'font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.5;';
+    const PILL_BTN = 'padding:8px 16px;border-radius:999px;background:var(--chip-bg);font-size:13px;font-weight:500;border:1px solid var(--border-color);cursor:pointer;transition:all .15s;';
 
-    // 2) API優先順位
-    const prioSec = document.createElement('div');
-    prioSec.className = 'settings-section';
-    prioSec.innerHTML = `
-      <div class="settings-section-title">API優先順位</div>
-      <div class="setting-desc" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">
-        上にあるInvidiousインスタンスから優先的に試行します。「↑」で上に移動。
-      </div>
-      <div id="nyt-api-priority-list" style="max-height:340px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:6px;"></div>
-      <div style="margin-top:8px;">
-        <button onclick="resetApiPriority()" style="padding:6px 14px;border-radius:16px;background:var(--chip-bg);font-size:13px;">既定順序に戻す</button>
-      </div>
+    // 1) API階層優先度 (inv / piped / min)
+    const tierSec = document.createElement('div');
+    tierSec.className = 'settings-section';
+    tierSec.id = 'nyt-api-tier-section';
+    tierSec.style.cssText = CARD;
+    tierSec.innerHTML = `
+      <div style="${TITLE}">🏆 API優先度（標準）</div>
+      <div style="${DESC}">動画を取得する時に試すAPIの順番です。上にあるものから優先的に使います。標準: 上=Invidious / 中=Piped / 下=Min</div>
+      <div id="nyt-tier-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div style="margin-top:12px;"><button onclick="resetApiTier()" style="${PILL_BTN}">標準に戻す</button></div>
     `;
-    panel.appendChild(prioSec);
+    panel.appendChild(tierSec);
 
-    // 3) 表示する動画 (すべて / 日本人投稿)
+    // 2) 表示する動画 (すべて / 新着)
     const filtSec = document.createElement('div');
     filtSec.className = 'settings-section';
+    filtSec.style.cssText = CARD;
     filtSec.innerHTML = `
-      <div class="settings-section-title">表示する動画</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <div class="setting-title">対象動画</div>
-          <div class="setting-desc">「日本人が投稿した動画」を選ぶと、タイトルや投稿者名にひらがな・カタカナを含む動画のみ表示します。</div>
-        </div>
-        <select id="nyt-video-filter" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text-color);font-size:14px;">
-          <option value="all">すべて</option>
-          <option value="japan">日本人が投稿した動画のみ</option>
-        </select>
+      <div style="${TITLE}">🎬 動画の表示</div>
+      <div style="${DESC}">「新着」にすると、最近投稿された動画のみ表示します。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;" id="nyt-filter-tabs">
+        <button data-val="all" class="nyt-filter-tab" style="${PILL_BTN}">すべて</button>
+        <button data-val="new" class="nyt-filter-tab" style="${PILL_BTN}">新着</button>
       </div>
     `;
     panel.appendChild(filtSec);
-    const sel = filtSec.querySelector('#nyt-video-filter');
-    sel.value = getFilter();
-    sel.onchange = () => {
-      setFilter(sel.value);
-      // ホームに居れば再読み込み
-      try { if (typeof loadTrend === 'function') loadTrend(); } catch(e){}
+    const updateFilterTabs = () => {
+      const cur = getFilter();
+      filtSec.querySelectorAll('.nyt-filter-tab').forEach(b => {
+        const active = b.dataset.val === cur;
+        b.style.background = active ? 'var(--primary-color,#3b82f6)' : 'var(--chip-bg)';
+        b.style.color = active ? '#fff' : 'var(--text-color)';
+        b.style.borderColor = active ? 'var(--primary-color,#3b82f6)' : 'var(--border-color)';
+      });
     };
+    filtSec.querySelectorAll('.nyt-filter-tab').forEach(b => {
+      b.onclick = () => {
+        setFilter(b.dataset.val);
+        updateFilterTabs();
+        try { if (typeof loadTrend === 'function') loadTrend(); } catch(e){}
+      };
+    });
+    updateFilterTabs();
 
+    // 3) API成功率ダッシュボード
+    const dashSec = document.createElement('div');
+    dashSec.className = 'settings-section';
+    dashSec.id = 'nyt-api-dashboard-section';
+    dashSec.style.cssText = CARD;
+    dashSec.innerHTML = `
+      <div style="${TITLE}">📊 API成功率</div>
+      <div style="${DESC}">各APIサーバーの接続成功率を表示します。</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <button onclick="renderApiDashboard()" style="${PILL_BTN}">🔄 更新</button>
+        <button onclick="resetApiStats()" style="${PILL_BTN}">🗑️ リセット</button>
+      </div>
+      <div id="nyt-api-dashboard" style="max-height:280px;overflow-y:auto;font-size:13px;border:1px solid var(--border-color);border-radius:10px;padding:4px 12px;"></div>
+    `;
+    panel.appendChild(dashSec);
+
+    // 4) Invidiousインスタンス優先順位 (詳細)
+    const prioSec = document.createElement('div');
+    prioSec.className = 'settings-section';
+    prioSec.style.cssText = CARD;
+    prioSec.innerHTML = `
+      <div style="${TITLE}">⚙️ Invidiousインスタンス順</div>
+      <div style="${DESC}">上にあるインスタンスから優先的に試行します。「↑」「↓」で並び替え。</div>
+      <div id="nyt-api-priority-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border-color);border-radius:10px;padding:4px 8px;"></div>
+      <div style="margin-top:12px;"><button onclick="resetApiPriority()" style="${PILL_BTN}">既定順序に戻す</button></div>
+    `;
+    panel.appendChild(prioSec);
+
+    renderTierList();
     renderApiDashboard();
     renderApiPriorityList();
   }
+
+  const TIER_LABELS = { inv:'Invidious', piped:'Piped', min:'Min' };
+  const TIER_DESC = { inv:'多くのインスタンスがあり安定', piped:'メタ情報が豊富', min:'軽量・補助用' };
+  window.renderTierList = function(){
+    const el = document.getElementById('nyt-tier-list');
+    if (!el) return;
+    const order = loadTier();
+    const rankLabel = ['🥇 一番上','🥈 中','🥉 下'];
+    el.innerHTML = order.map((k, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border-color);border-radius:10px;background:var(--chip-bg);">
+        <span style="font-size:12px;color:var(--text-secondary);min-width:64px;">${rankLabel[i]}</span>
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:14px;">${TIER_LABELS[k]||k}</div>
+          <div style="font-size:11px;color:var(--text-secondary);">${TIER_DESC[k]||''}</div>
+        </div>
+        <button onclick="moveApiTier(${i},-1)" ${i===0?'disabled':''} style="padding:4px 10px;border-radius:8px;background:var(--bg-color);border:1px solid var(--border-color);font-size:13px;cursor:pointer;opacity:${i===0?0.4:1};">↑</button>
+        <button onclick="moveApiTier(${i},1)" ${i===order.length-1?'disabled':''} style="padding:4px 10px;border-radius:8px;background:var(--bg-color);border:1px solid var(--border-color);font-size:13px;cursor:pointer;opacity:${i===order.length-1?0.4:1};">↓</button>
+      </div>
+    `).join('');
+  };
+  window.moveApiTier = function(idx, dir){
+    const arr = loadTier();
+    const j = idx + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    saveTier(arr);
+    renderTierList();
+  };
+  window.resetApiTier = function(){
+    saveTier(DEFAULT_TIER.slice());
+    renderTierList();
+  };
 
   window.renderApiDashboard = function(){
     const el = document.getElementById('nyt-api-dashboard');
@@ -6624,6 +6873,858 @@ window.fetchExtraSearch = async function(query){
       }
     } catch(e){}
   }, 15000);
+})();
+</script>
+
+<!-- ============================================================
+     高速化 & YouTube Data API キー対応 オーバーレイ
+     - INVIDIOUS 全インスタンスへ並列リクエストし、最速8件で取得
+     - 設定に YouTube API キー欄を追加。完了で保存。
+       API キーがあれば公式 YouTube Data API v3 を優先使用。
+       無ければ従来通り Invidious 並列レース。
+     - チャンネル動画/概要欄/視聴回数/投稿日 を確実取得
+     ============================================================ -->
+<script>
+(function(){
+  'use strict';
+  var YT_KEY_STORAGE = 'ntube_youtube_api_key_v1';
+  var YT_CHID_CACHE  = 'ntube_youtube_chid_cache_v1';
+
+  function getYtKey(){
+    try { return (localStorage.getItem(YT_KEY_STORAGE)||'').trim(); } catch(_) { return ''; }
+  }
+  function setYtKey(k){
+    try { localStorage.setItem(YT_KEY_STORAGE, (k||'').trim()); } catch(_){}
+  }
+  function _chidCache(){
+    try { return JSON.parse(localStorage.getItem(YT_CHID_CACHE)||'{}'); } catch(_) { return {}; }
+  }
+  function _saveChidCache(c){
+    try { localStorage.setItem(YT_CHID_CACHE, JSON.stringify(c)); } catch(_){}
+  }
+
+  // ---------- 並列レース: N 件目までを最速で集める ----------
+  // urls: [{url, parse}] 形式でも、文字列配列でもOK
+  function parallelRaceJson(urls, opts){
+    opts = opts || {};
+    var want   = opts.want   || 1;      // 何件取れたら返すか
+    var timeout= opts.timeout|| 4500;
+    var validate = opts.validate || function(d){ return d != null; };
+    var results = [];
+    return new Promise(function(resolve){
+      var done = false, settled = 0;
+      var timer = setTimeout(function(){
+        if (done) return; done = true;
+        resolve(results);
+      }, timeout);
+      if (!urls.length){ clearTimeout(timer); return resolve([]); }
+      urls.forEach(function(u){
+        var url = (typeof u === 'string') ? u : u.url;
+        fetch(url, { signal: AbortSignal.timeout(timeout) })
+          .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+          .then(function(d){
+            if (done) return;
+            if (validate(d)){
+              results.push(d);
+              if (results.length >= want){
+                done = true; clearTimeout(timer); resolve(results);
+              }
+            }
+          })
+          .catch(function(){})
+          .finally(function(){
+            settled++;
+            if (!done && settled >= urls.length){
+              done = true; clearTimeout(timer); resolve(results);
+            }
+          });
+      });
+    });
+  }
+
+  // Invidious 全インスタンス取得
+  function _allInv(){
+    try {
+      if (Array.isArray(window.INVIDIOUS_INSTANCES) && window.INVIDIOUS_INSTANCES.length) return window.INVIDIOUS_INSTANCES.slice();
+    } catch(_){}
+    return [];
+  }
+  function _wrap(u){
+    try { return (typeof buildFetchUrl === 'function') ? buildFetchUrl(u) : u; } catch(_) { return u; }
+  }
+
+  // ---------- YouTube Data API v3 ----------
+  function ytApi(path, params){
+    var key = getYtKey();
+    var q = Object.keys(params||{}).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
+    return 'https://www.googleapis.com/youtube/v3/' + path + '?' + q + '&key=' + encodeURIComponent(key);
+  }
+  function ytFetch(path, params){
+    return fetch(ytApi(path, params), { signal: AbortSignal.timeout(6000) })
+      .then(function(r){ if(!r.ok) throw new Error('yt '+r.status); return r.json(); });
+  }
+  // ISO8601 -> 秒
+  function isoToSec(iso){
+    if(!iso) return 0;
+    var m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
+    if(!m) return 0;
+    return (parseInt(m[1]||0)*3600)+(parseInt(m[2]||0)*60)+parseInt(m[3]||0);
+  }
+  function relJa(tsSec){
+    if(!tsSec) return '';
+    var diff = Math.floor(Date.now()/1000) - tsSec;
+    if (diff < 60) return diff+'秒前';
+    if (diff < 3600) return Math.floor(diff/60)+'分前';
+    if (diff < 86400) return Math.floor(diff/3600)+'時間前';
+    if (diff < 86400*7) return Math.floor(diff/86400)+'日前';
+    if (diff < 86400*30) return Math.floor(diff/86400/7)+'週間前';
+    if (diff < 86400*365) return Math.floor(diff/86400/30)+'か月前';
+    return Math.floor(diff/86400/365)+'年前';
+  }
+
+  // chName -> channelId (YouTube API)
+  function ytResolveChannelId(name){
+    var cache = _chidCache();
+    if (cache[name]) return Promise.resolve(cache[name]);
+    // search
+    return ytFetch('search', { part:'snippet', type:'channel', q:name, maxResults:5, hl:'ja', regionCode:'JP' })
+      .then(function(d){
+        var items = (d && d.items) || [];
+        // 完全一致を優先
+        var norm = function(s){ return (s||'').toLowerCase().replace(/[\s\u3000@\-_]/g,''); };
+        var t = norm(name);
+        var pick = items.find(function(x){ return norm(x.snippet && x.snippet.channelTitle) === t; }) || items[0];
+        var id = pick && pick.snippet && pick.snippet.channelId;
+        if (id){ cache[name] = id; _saveChidCache(cache); }
+        return id || null;
+      });
+  }
+
+  // YouTube API: channel videos (詳細含む)
+  function ytChannelVideos(channelName, page){
+    page = page || 1;
+    return ytResolveChannelId(channelName).then(function(chId){
+      if(!chId) return null;
+      // 1) channels → uploads playlist
+      return ytFetch('channels', { part:'contentDetails,snippet,statistics,brandingSettings', id: chId })
+        .then(function(c){
+          var item = c.items && c.items[0];
+          if(!item) return null;
+          var uploads = item.contentDetails.relatedPlaylists.uploads;
+          var sn = item.snippet || {}, st = item.statistics || {}, br = item.brandingSettings || {};
+          var info = {
+            authorId: chId,
+            author: sn.title,
+            authorHandle: sn.customUrl,
+            description: sn.description || '',
+            subCount: parseInt(st.subscriberCount||0),
+            authorThumbnails: sn.thumbnails ? [{ url: (sn.thumbnails.high||sn.thumbnails.medium||sn.thumbnails.default||{}).url }] : null,
+            authorBanners: (br.image && br.image.bannerExternalUrl) ? [{ url: br.image.bannerExternalUrl }] : null
+          };
+          // 2) playlistItems → videoIds
+          return ytFetch('playlistItems', { part:'contentDetails,snippet', playlistId: uploads, maxResults: 50 })
+            .then(function(pl){
+              var ids = (pl.items||[]).map(function(x){ return x.contentDetails.videoId; });
+              if(!ids.length) return { videos: [], channelInfo: info };
+              // 3) videos.list で詳細(視聴回数/長さ/公開日)
+              return ytFetch('videos', { part:'snippet,statistics,contentDetails,liveStreamingDetails', id: ids.join(',') })
+                .then(function(vs){
+                  var videos = (vs.items||[]).map(function(v){
+                    var s = v.snippet||{}, st2 = v.statistics||{}, cd = v.contentDetails||{};
+                    var ts = Math.floor(new Date(s.publishedAt).getTime()/1000);
+                    var live = (s.liveBroadcastContent && s.liveBroadcastContent !== 'none');
+                    return {
+                      videoId: v.id,
+                      title: s.title,
+                      author: s.channelTitle,
+                      authorId: s.channelId,
+                      authorThumbnails: info.authorThumbnails,
+                      description: s.description,
+                      lengthSeconds: isoToSec(cd.duration),
+                      viewCount: parseInt(st2.viewCount||0),
+                      likeCount: parseInt(st2.likeCount||0),
+                      published: ts,
+                      publishedText: relJa(ts),
+                      liveNow: s.liveBroadcastContent === 'live',
+                      isUpcoming: s.liveBroadcastContent === 'upcoming'
+                    };
+                  });
+                  return { videos: videos, channelInfo: info };
+                });
+            });
+        });
+    }).catch(function(e){ console.warn('[yt-api] channel fail', e); return null; });
+  }
+
+  // ---------- Invidious 並列レース版: チャンネル ID 解決 ----------
+  function resolveChannelIdParallel(channelName){
+    var inst = _allInv();
+    if(!inst.length) return Promise.resolve(null);
+    var urls = inst.map(function(i){
+      return _wrap(i + '/api/v1/search?q=' + encodeURIComponent(channelName) + '&type=channel&page=1');
+    });
+    return parallelRaceJson(urls, {
+      want: 8,
+      timeout: 3500,
+      validate: function(d){ return Array.isArray(d) && d.some(function(x){ return x && x.type==='channel' && x.authorId; }); }
+    }).then(function(results){
+      // 全候補をマージ
+      var merged = [];
+      results.forEach(function(arr){ arr.forEach(function(x){ if(x && x.type==='channel' && x.authorId) merged.push(x); }); });
+      if(!merged.length) return null;
+      var picker = (typeof _pickBestChannel === 'function') ? _pickBestChannel : function(l){ return l[0]; };
+      var best = picker(merged, channelName);
+      return best ? { id: best.authorId, channel: best } : null;
+    });
+  }
+
+  // ---------- Invidious 並列: チャンネル動画 ----------
+  function invChannelVideosParallel(channelName, page){
+    page = page || 1;
+    return resolveChannelIdParallel(channelName).then(function(r){
+      if(!r) return null;
+      var inst = _allInv();
+      var urls = inst.map(function(i){
+        return _wrap(i + '/api/v1/channels/' + r.id + '/videos?page=' + page + '&hl=ja&region=JP');
+      });
+      return parallelRaceJson(urls, {
+        want: 8,
+        timeout: 3500,
+        validate: function(d){
+          var v = d && (d.videos || d);
+          return Array.isArray(v) && v.length > 0 && v[0].videoId;
+        }
+      }).then(function(results){
+        if (!results.length) return null;
+        // 各結果をマージしてベスト(視聴回数/公開日が入っている)を採用
+        var byId = {};
+        results.forEach(function(d){
+          var arr = d && (d.videos || d);
+          (arr||[]).forEach(function(v){
+            if (!v || !v.videoId) return;
+            var prev = byId[v.videoId];
+            if (!prev) { byId[v.videoId] = v; return; }
+            // viewCount / published を補完
+            if (!prev.viewCount && v.viewCount) prev.viewCount = v.viewCount;
+            if (!prev.published && v.published) prev.published = v.published;
+            if (!prev.publishedText && v.publishedText) prev.publishedText = v.publishedText;
+            if (!prev.lengthSeconds && v.lengthSeconds) prev.lengthSeconds = v.lengthSeconds;
+            if (!prev.authorThumbnails && v.authorThumbnails) prev.authorThumbnails = v.authorThumbnails;
+          });
+        });
+        var videos = Object.keys(byId).map(function(k){ return byId[k]; });
+        return { videos: videos, channelInfo: r.channel };
+      });
+    });
+  }
+
+  // ---------- オーバーライド: fetchChannelVideos ----------
+  var _origFetchChannelVideos = window.fetchChannelVideos;
+  window.fetchChannelVideos = async function(channelName, page){
+    page = page || 1;
+    var key = getYtKey();
+    if (key){
+      try {
+        var r = await Promise.race([
+          ytChannelVideos(channelName, page),
+          new Promise(function(res){ setTimeout(function(){ res(null); }, 5000); })
+        ]);
+        if (r && r.videos && r.videos.length) return r;
+      } catch(_){}
+    }
+    // 並列レース
+    try {
+      var p = await Promise.race([
+        invChannelVideosParallel(channelName, page),
+        new Promise(function(res){ setTimeout(function(){ res(null); }, 4000); })
+      ]);
+      if (p && p.videos && p.videos.length) return p;
+    } catch(_){}
+    // 最後のフォールバック: オリジナル
+    if (typeof _origFetchChannelVideos === 'function') return _origFetchChannelVideos(channelName, page);
+    return null;
+  };
+
+  // ---------- オーバーライド: fetchChannelInfoFromInvidious (概要/バナー) ----------
+  var _origFetchChannelInfo = window.fetchChannelInfoFromInvidious;
+  window.fetchChannelInfoFromInvidious = async function(channelName){
+    var key = getYtKey();
+    if (key){
+      try {
+        var r = await ytChannelVideos(channelName, 1);
+        if (r && r.channelInfo){
+          var ci = r.channelInfo;
+          // 形を Invidious 互換に
+          return Object.assign({}, ci, { authorId: ci.authorId, type: 'channel' });
+        }
+      } catch(_){}
+    }
+    // 並列 ID 解決 → 全インスタンスで /channels/{id} を最速8件レース
+    try {
+      var rs = await resolveChannelIdParallel(channelName);
+      if (rs){
+        var inst = _allInv();
+        var urls = inst.map(function(i){ return _wrap(i + '/api/v1/channels/' + rs.id); });
+        var dets = await parallelRaceJson(urls, {
+          want: 5, timeout: 4000,
+          validate: function(d){ return d && (d.author || d.authorId); }
+        });
+        if (dets.length){
+          // descriptionとバナーが入っているものを優先
+          var best = dets.find(function(d){ return d.description && (d.authorBanners||[]).length>0; })
+                  || dets.find(function(d){ return d.description; })
+                  || dets[0];
+          return Object.assign({}, rs.channel, best, { authorId: rs.id });
+        }
+        return rs.channel;
+      }
+    } catch(_){}
+    if (typeof _origFetchChannelInfo === 'function') return _origFetchChannelInfo(channelName);
+    return null;
+  };
+
+  // ---------- オーバーライド: fetchChannelLiveVideos ----------
+  var _origFetchChannelLive = window.fetchChannelLiveVideos;
+  window.fetchChannelLiveVideos = async function(channelName){
+    try {
+      var rs = await resolveChannelIdParallel(channelName);
+      if (rs){
+        var inst = _allInv();
+        var urls = inst.map(function(i){ return _wrap(i + '/api/v1/channels/' + rs.id + '/streams'); });
+        var results = await parallelRaceJson(urls, {
+          want: 4, timeout: 3500,
+          validate: function(d){ var v=d&&(d.videos||d); return Array.isArray(v) && v.length>0; }
+        });
+        var byId = {};
+        results.forEach(function(d){
+          var arr = d && (d.videos||d);
+          (arr||[]).forEach(function(v){
+            if (v && v.videoId && !byId[v.videoId]) byId[v.videoId] = Object.assign({ _sourceType:'stream' }, v);
+          });
+        });
+        var vids = Object.keys(byId).map(function(k){ return byId[k]; });
+        if (vids.length) return { videos: vids, channelInfo: rs.channel };
+      }
+    } catch(_){}
+    if (typeof _origFetchChannelLive === 'function') return _origFetchChannelLive(channelName);
+    return { videos: [], channelInfo: null };
+  };
+
+  // ---------- オーバーライド: fetchChannelShortsMultiPage ----------
+  var _origShorts = window.fetchChannelShortsMultiPage;
+  window.fetchChannelShortsMultiPage = async function(channelName, startPage){
+    startPage = startPage || 1;
+    try {
+      var rs = await resolveChannelIdParallel(channelName);
+      if (rs){
+        var inst = _allInv();
+        var pages = [startPage, startPage+1, startPage+2];
+        var all = [];
+        await Promise.all(pages.map(function(pg){
+          var urls = inst.map(function(i){ return _wrap(i + '/api/v1/channels/' + rs.id + '/videos?page=' + pg); });
+          return parallelRaceJson(urls, {
+            want: 4, timeout: 3500,
+            validate: function(d){ var v=d&&(d.videos||d); return Array.isArray(v) && v.length>0; }
+          }).then(function(results){
+            var byId = {};
+            results.forEach(function(d){
+              var arr = d && (d.videos||d);
+              (arr||[]).forEach(function(v){ if(v&&v.videoId && !byId[v.videoId]) byId[v.videoId]=v; });
+            });
+            Object.keys(byId).forEach(function(k){ all.push(byId[k]); });
+          });
+        }));
+        var shorts = all.filter(function(v){ return v.lengthSeconds>0 && v.lengthSeconds<=61; }).map(function(v){
+          return { id:v.videoId, title:v.title, channel:v.author||channelName, isShort:true,
+                   authorThumb:(v.authorThumbnails&&v.authorThumbnails[0])?v.authorThumbnails[0].url:('https://i.pravatar.cc/150?u='+encodeURIComponent(v.author||channelName)),
+                   duration:v.lengthSeconds, published:v.publishedText||relJa(v.published||0), viewCount:v.viewCount||0 };
+        });
+        return { shorts: shorts, hasMore: all.length >= 20 };
+      }
+    } catch(_){}
+    if (typeof _origShorts === 'function') return _origShorts(channelName, startPage);
+    return { shorts: [], hasMore: false };
+  };
+
+  // ---------- 動画詳細(概要欄/視聴回数/投稿日) — 並列強化 ----------
+  // 既存 getVideoData 等を補強: 概要欄が空のときに並列で再取得
+  async function fetchVideoDetailParallel(videoId){
+    var key = getYtKey();
+    if (key){
+      try {
+        var d = await ytFetch('videos', { part:'snippet,statistics,contentDetails', id: videoId });
+        var v = d && d.items && d.items[0];
+        if (v){
+          var s = v.snippet||{}, st = v.statistics||{}, cd = v.contentDetails||{};
+          var ts = Math.floor(new Date(s.publishedAt).getTime()/1000);
+          return {
+            title: s.title, author: s.channelTitle, authorId: s.channelId,
+            description: s.description, descriptionHtml: (s.description||'').replace(/\n/g,'<br>'),
+            viewCount: parseInt(st.viewCount||0), likeCount: parseInt(st.likeCount||0),
+            published: ts, publishedText: relJa(ts), lengthSeconds: isoToSec(cd.duration)
+          };
+        }
+      } catch(_){}
+    }
+    var inst = _allInv();
+    var urls = inst.map(function(i){
+      return _wrap(i + '/api/v1/videos/' + videoId + '?fields=title,author,authorId,authorThumbnails,viewCount,likeCount,published,publishedText,description,descriptionHtml,lengthSeconds&hl=ja&region=JP');
+    });
+    var results = await parallelRaceJson(urls, {
+      want: 8, timeout: 4000,
+      validate: function(d){ return d && d.title; }
+    });
+    if (!results.length) return null;
+    // フィールドをマージ(欠損補完)
+    var out = {};
+    results.forEach(function(d){
+      Object.keys(d).forEach(function(k){
+        if (out[k]==null || out[k]==='' || (typeof out[k]==='number' && out[k]===0)){
+          if (d[k]!=null && d[k]!=='' && d[k]!==0) out[k] = d[k];
+        }
+      });
+    });
+    return out;
+  }
+  window.fetchVideoDetailParallel = fetchVideoDetailParallel;
+
+  // 既存 description 表示の補強: 概要欄が空で表示されている場合に再取得して埋める
+  function _hookDescription(){
+    var desc = document.querySelector('.video-description');
+    if (!desc) return;
+    if (!window.currentVideoId) return;
+    if (desc.dataset.vid === window.currentVideoId) return;
+    desc.dataset.vid = window.currentVideoId;
+    // 1秒待って空っぽなら補完
+    setTimeout(function(){
+      var text = (desc.innerText||'').replace(/\s/g,'');
+      if (text.length > 10) return;
+      fetchVideoDetailParallel(window.currentVideoId).then(function(d){
+        if (!d || !d.description) return;
+        if (window.currentVideoId !== desc.dataset.vid) return;
+        var html = (d.descriptionHtml || (d.description||'').replace(/\n/g,'<br>'));
+        // 既存の構造維持: 概要のテキスト部のみ更新
+        var inner = desc.querySelector('.video-description-text') || desc.querySelector('.desc-body') || desc;
+        if (inner === desc){
+          var span = document.createElement('div');
+          span.innerHTML = html;
+          desc.innerHTML = '';
+          desc.appendChild(span);
+        } else {
+          inner.innerHTML = html;
+        }
+        // 視聴回数/投稿日も補完
+        try {
+          var meta = document.querySelector('.video-stats') || document.querySelector('.video-meta');
+          if (meta && d.viewCount && !/視聴/.test(meta.innerText)){
+            meta.innerHTML = (d.viewCount.toLocaleString())+'回視聴 ・ '+(d.publishedText||'');
+          }
+        } catch(_){}
+      });
+    }, 1100);
+  }
+  // 動画ビューが開かれた時に発火
+  var _origPlayVideo = window.playVideo;
+  if (typeof _origPlayVideo === 'function'){
+    window.playVideo = function(){
+      var r = _origPlayVideo.apply(this, arguments);
+      try { setTimeout(_hookDescription, 600); } catch(_){}
+      return r;
+    };
+  }
+
+  // ============ 設定 UI: YouTube API キー欄を追加 ============
+  function injectSettingsUI(){
+    var panel = document.querySelector('#view-settings .settings-panel');
+    if (!panel) return false;
+    if (panel.querySelector('[data-ntube-ytkey]')) return true;
+    var sec = document.createElement('div');
+    sec.className = 'settings-section';
+    sec.setAttribute('data-ntube-ytkey','1');
+    sec.innerHTML =
+      '<div class="settings-section-title">YouTube Data API キー</div>' +
+      '<div class="setting-item" style="flex-direction:column;align-items:stretch;gap:10px;">' +
+        '<div class="setting-info">' +
+          '<div class="setting-title">API キー（任意）</div>' +
+          '<div class="setting-desc">入力して「完了」を押すと、このキーを使って動画情報を取得します。空欄なら従来通り並列レースで取得します。</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+          '<input id="ntube-ytkey-input" type="text" autocomplete="off" spellcheck="false" placeholder="AIza..." ' +
+            'style="flex:1;min-width:220px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text-color);font-size:14px;">' +
+          '<button id="ntube-ytkey-save" style="padding:10px 18px;border-radius:10px;border:none;background:var(--text-color);color:var(--bg-color);font-weight:600;cursor:pointer;">完了</button>' +
+          '<button id="ntube-ytkey-clear" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border-color);background:transparent;color:var(--text-color);cursor:pointer;">クリア</button>' +
+        '</div>' +
+        '<div id="ntube-ytkey-status" style="font-size:12px;color:var(--text-secondary);"></div>' +
+      '</div>';
+    // 「登録チャンネル管理」のセクションの直前に挿入(末尾でも可)
+    var subsSec = panel.querySelector('.settings-section:last-child');
+    if (subsSec) panel.insertBefore(sec, subsSec); else panel.appendChild(sec);
+
+    var input = sec.querySelector('#ntube-ytkey-input');
+    var status = sec.querySelector('#ntube-ytkey-status');
+    var cur = getYtKey();
+    if (cur){ input.value = cur; status.textContent = '✓ 保存済み (API キー使用中)'; }
+    else status.textContent = '未設定 — 並列レースで取得します';
+
+    sec.querySelector('#ntube-ytkey-save').onclick = function(){
+      var v = (input.value||'').trim();
+      setYtKey(v);
+      status.textContent = v ? '✓ 保存しました (API キー使用中)' : '✓ クリアしました — 並列レースで取得します';
+      // キャッシュもクリアして次回新規取得
+      try { localStorage.removeItem(YT_CHID_CACHE); } catch(_){}
+    };
+    sec.querySelector('#ntube-ytkey-clear').onclick = function(){
+      input.value = ''; setYtKey('');
+      status.textContent = '✓ クリアしました — 並列レースで取得します';
+      try { localStorage.removeItem(YT_CHID_CACHE); } catch(_){}
+    };
+    return true;
+  }
+  function trySettingsInject(){
+    if (injectSettingsUI()) return;
+    setTimeout(trySettingsInject, 400);
+  }
+  // ナビゲーションを監視
+  var _origNav = window.navigate;
+  if (typeof _origNav === 'function'){
+    window.navigate = function(){
+      var r = _origNav.apply(this, arguments);
+      try { setTimeout(trySettingsInject, 50); } catch(_){}
+      return r;
+    };
+  }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(trySettingsInject, 200); });
+  setTimeout(trySettingsInject, 1500);
+
+  console.log('[ntube-overlay] 並列高速取得 + YouTube API キー対応 を有効化');
+})();
+</script>
+<style>
+/* ===== Plus Home (mecha UI) ===== */
+#view-plus-home { padding: 0 !important; }
+.plus-home-wrap {
+  position: relative; min-height: calc(100vh - 56px);
+  background:
+    radial-gradient(ellipse at top, rgba(0,229,255,0.08), transparent 60%),
+    linear-gradient(180deg, #05080f 0%, #0a0f1a 100%);
+  color: #d6f3ff; font-family: 'JetBrains Mono','Courier New',monospace;
+  overflow: hidden; padding: 48px 24px 80px;
+}
+[data-theme="light"] .plus-home-wrap, body:not([data-theme="dark"]) .plus-home-wrap {
+  background: radial-gradient(ellipse at top, rgba(0,150,200,0.12), transparent 60%), linear-gradient(180deg,#e8f1f7 0%, #f5f8fb 100%);
+  color: #0a2540;
+}
+.ph-grid-bg {
+  position: absolute; inset: 0; pointer-events: none; opacity:.35;
+  background-image:
+    linear-gradient(rgba(0,229,255,.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,.18) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+}
+.ph-scanline {
+  position: absolute; inset: 0; pointer-events: none; opacity:.08;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #00e5ff 3px 4px);
+  animation: phScan 6s linear infinite;
+}
+@keyframes phScan { from { transform: translateY(-100%);} to {transform: translateY(100%);} }
+.ph-hero { position: relative; max-width: 920px; margin: 0 auto 40px; text-align: center; }
+.ph-badge {
+  display:inline-block; padding: 6px 14px; font-size: 11px; letter-spacing: 2px;
+  border: 1px solid #00e5ff; color: #00e5ff; background: rgba(0,229,255,.06);
+  clip-path: polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);
+  margin-bottom: 18px;
+}
+.ph-title {
+  font-size: clamp(28px, 5vw, 52px); font-weight: 900; letter-spacing: 4px;
+  margin: 0 0 10px; line-height: 1.1;
+  background: linear-gradient(180deg,#fff 0%, #7be9ff 50%, #00b4d8 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 30px rgba(0,229,255,.35);
+  position: relative;
+}
+.ph-title::before, .ph-title::after {
+  content: attr(data-text); position:absolute; left:0; right:0; top:0;
+  -webkit-text-fill-color: initial; background: none;
+  mix-blend-mode: screen; opacity:.6;
+}
+.ph-title::before { color: #ff00aa; transform: translate(-2px,0); animation: phGlitch 4s infinite; }
+.ph-title::after  { color: #00fff0; transform: translate(2px,0);  animation: phGlitch 4s infinite reverse; }
+@keyframes phGlitch {
+  0%,90%,100% { clip-path: inset(0 0 0 0); transform: translate(0,0); }
+  92% { clip-path: inset(20% 0 60% 0); transform: translate(-3px,1px); }
+  94% { clip-path: inset(60% 0 10% 0); transform: translate(3px,-1px); }
+  96% { clip-path: inset(40% 0 30% 0); transform: translate(-2px,0); }
+}
+.ph-subtitle { font-size: 12px; letter-spacing: 3px; color: #6bd6ff; opacity:.85; }
+.ph-bars { display:flex; gap:6px; justify-content:center; margin-top:24px; }
+.ph-bars span {
+  width: 36px; height: 4px; background: #00e5ff; opacity:.25; border-radius: 1px;
+  animation: phBar 1.4s ease-in-out infinite;
+}
+.ph-bars span:nth-child(2){animation-delay:.1s} .ph-bars span:nth-child(3){animation-delay:.2s}
+.ph-bars span:nth-child(4){animation-delay:.3s} .ph-bars span:nth-child(5){animation-delay:.4s}
+@keyframes phBar { 0%,100%{opacity:.2;transform:scaleY(.6)} 50%{opacity:1;transform:scaleY(1.6); box-shadow:0 0 8px #00e5ff} }
+
+.ph-launch { cursor: pointer; transition: transform .15s, box-shadow .2s; }
+.ph-launch:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px rgba(0,229,255,.25), 0 14px 50px rgba(0,229,255,.25); }
+.ph-launch-btn {
+  display:inline-block; margin-top:8px; padding:8px 16px;
+  background: linear-gradient(90deg, rgba(0,229,255,.15), rgba(0,229,255,.05));
+  border:1px solid rgba(0,229,255,.5); color:#7ff0ff;
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing:1px;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%, 8px 50%);
+}
+body.chrome-hidden #main-content { padding:0 !important; margin:0 !important; width:100% !important; }
+body.chrome-hidden header,
+body.chrome-hidden #sidebar,
+body.chrome-hidden #categories-bar { display:none !important; }
+.ext-view { position: fixed; inset: 0; background:#000; z-index: 9998; display:none; }
+.ext-view.active { display:block; }
+.ext-frame { width:100%; height:100%; border:0; background:#fff; }
+.ext-loading {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:#7ff0ff; font-family:'JetBrains Mono',monospace; font-size:14px; letter-spacing:2px;
+  background:radial-gradient(circle at 50% 50%, #0a1423, #000);
+  pointer-events:none;
+}
+
+.ph-panel {
+  position: relative; max-width: 720px; margin: 0 auto 24px;
+  padding: 24px 28px; border: 1px solid rgba(0,229,255,.35);
+  background: linear-gradient(180deg, rgba(10,20,35,.85), rgba(10,20,35,.55));
+  backdrop-filter: blur(6px);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+  box-shadow: inset 0 0 0 1px rgba(0,229,255,.08), 0 12px 40px rgba(0,0,0,.5);
+}
+.ph-panel::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+}
+.ph-panel-head { display:flex; align-items:center; gap:8px; font-size:11px; letter-spacing:2px; color:#7be9ff; opacity:.8; margin-bottom:8px; }
+.ph-dot { width:8px;height:8px;border-radius:50%;background:#00ff88;box-shadow:0 0 10px #00ff88; animation: phPulse 1.5s infinite; }
+@keyframes phPulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.ph-panel-title { font-size: 28px; font-weight: 800; margin: 4px 0 16px; letter-spacing: 2px; color:#fff; }
+[data-theme="light"] .ph-panel-title { color:#0a2540; }
+.ph-meta { font-size: 11px; letter-spacing: 2px; color:#6bd6ff; opacity:.7; margin-bottom: 6px; }
+.ph-impl {
+  display:inline-block; padding: 8px 18px; font-size: 16px; font-weight:700;
+  border: 1px dashed rgba(255,180,60,.6); color:#ffc857; letter-spacing:2px;
+  background: rgba(255,180,60,.06);
+}
+</style>
+<script>
+/* ===== 仲良しTube v1.7.4 パッチ =====
+   - 古い「API 優先度 (上が高優先)」UIを撤去
+   - 全APIへ並行ping → 速い順 top8 を優先使用
+   - Shorts: 表示外は確実に停止 / iframe再利用 / バグ低減
+   - /#/plus-home ルーティング
+*/
+(function(){
+  'use strict';
+
+  /* --- 1) 古い「API 優先度 (上が高優先)」UI を完全に無効化 --- */
+  try {
+    if (typeof window.injectApiProviderUI === 'function') {
+      window.injectApiProviderUI = function(){};
+    }
+  } catch(_){}
+  function removeOldApiPriorityUI(){
+    document.querySelectorAll('#api-provider-priority').forEach(el => el.remove());
+    // テキストで該当する古いタイトルが残っていれば取り除く
+    document.querySelectorAll('#view-settings div').forEach(el => {
+      if (el.children.length === 0 && /API 優先度 \(上が高優先\)/.test(el.textContent||'')) {
+        const box = el.closest('div[id="api-provider-priority"]') || el.parentElement;
+        if (box && box.id === 'api-provider-priority') box.remove();
+      }
+    });
+  }
+  setInterval(removeOldApiPriorityUI, 1500);
+
+  /* --- 2) 全API並行ping → 最速 top8 を優先 --- */
+  const SPEED_KEY = 'nyt_api_speed_top_v1';
+  const SPEED_TS  = 'nyt_api_speed_ts_v1';
+  function loadFastList(){
+    try { return JSON.parse(localStorage.getItem(SPEED_KEY)||'[]'); } catch(_) { return []; }
+  }
+  function saveFastList(list){
+    try { localStorage.setItem(SPEED_KEY, JSON.stringify(list)); localStorage.setItem(SPEED_TS, String(Date.now())); } catch(_) {}
+  }
+  function pingOne(base){
+    return new Promise(resolve => {
+      const url = base.replace(/\/+$/,'') + '/api/v1/stats';
+      const t0 = performance.now();
+      const ctrl = new AbortController();
+      const timer = setTimeout(()=>{ ctrl.abort(); resolve({base, ms: 99999}); }, 4000);
+      fetch(url, {signal: ctrl.signal, cache:'no-store', mode:'cors'})
+        .then(r => { clearTimeout(timer); resolve({base, ms: r.ok ? (performance.now()-t0) : 99999}); })
+        .catch(()=>{ clearTimeout(timer); resolve({base, ms: 99999}); });
+    });
+  }
+  async function measureAllApis(){
+    const list = (window.INVIDIOUS_INSTANCES||[]).slice(0, 60);
+    if (!list.length) return;
+    const results = await Promise.all(list.map(pingOne));
+    const top = results.filter(r => r.ms < 99999).sort((a,b)=>a.ms-b.ms).slice(0,8).map(r=>r.base);
+    if (top.length){
+      saveFastList(top);
+      // 既存配列の先頭に最速8を差し込み (重複除去)
+      const seen = new Set(top);
+      const rest = (window.INVIDIOUS_INSTANCES||[]).filter(x => !seen.has(x));
+      window.INVIDIOUS_INSTANCES = top.concat(rest);
+      console.log('[v1.7.4] fastest 8 APIs:', top);
+    }
+  }
+  function maybeMeasure(){
+    const ts = +(localStorage.getItem(SPEED_TS)||0);
+    const cached = loadFastList();
+    if (cached.length === 8) {
+      const seen = new Set(cached);
+      const rest = (window.INVIDIOUS_INSTANCES||[]).filter(x => !seen.has(x));
+      window.INVIDIOUS_INSTANCES = cached.concat(rest);
+    }
+    if (Date.now() - ts > 10*60*1000) {  // 10分毎
+      setTimeout(measureAllApis, 1500);
+    }
+  }
+  setTimeout(maybeMeasure, 800);
+
+  /* --- 3) Shorts 安定化: 表示外は強制停止 & 再開時のみ src 復帰 --- */
+  function killAllShortsOffscreen(){
+    const container = document.getElementById('shorts-container');
+    if (!container) return;
+    const items = container.querySelectorAll('.short-snap-item');
+    const vh = window.innerHeight;
+    items.forEach(item => {
+      const r = item.getBoundingClientRect();
+      const visible = r.top < vh*0.6 && r.bottom > vh*0.4;
+      if (!visible) {
+        const iframe = item.querySelector('iframe');
+        if (iframe && iframe.src && !iframe.src.includes('about:blank')) {
+          if (!iframe.dataset.savedSrc) iframe.dataset.savedSrc = iframe.src;
+          iframe.src = 'about:blank';
+        }
+        item.querySelectorAll('video,audio').forEach(el => { try{ el.pause(); }catch(_){} });
+      } else {
+        const iframe = item.querySelector('iframe');
+        if (iframe && iframe.src.includes('about:blank') && iframe.dataset.savedSrc) {
+          iframe.src = iframe.dataset.savedSrc;
+        }
+      }
+    });
+  }
+  let _shortsTick = null;
+  function startShortsWatcher(){
+    if (_shortsTick) return;
+    _shortsTick = setInterval(() => {
+      if (document.getElementById('view-shorts')?.classList.contains('active')) {
+        killAllShortsOffscreen();
+      }
+    }, 600);
+  }
+  startShortsWatcher();
+  // スクロール時にもチェック
+  document.addEventListener('scroll', () => {
+    if (document.getElementById('view-shorts')?.classList.contains('active')) killAllShortsOffscreen();
+  }, {passive:true, capture:true});
+
+  /* --- 4) /#/plus-home & /#/gust ルーティング --- */
+  function setChromeHidden(hidden){
+    const hdr = document.querySelector('header');
+    const sb = document.getElementById('sidebar');
+    const mc = document.getElementById('main-content');
+    const cats = document.getElementById('categories-bar');
+    if (hidden) {
+      if (hdr) hdr.style.display = 'none';
+      if (sb) sb.style.display = 'none';
+      if (cats) cats.style.display = 'none';
+      if (mc) { mc.style.padding = '0'; mc.style.marginLeft = '0'; mc.style.marginTop = '0'; mc.style.width = '100%'; }
+      document.body.classList.add('chrome-hidden');
+    } else {
+      if (hdr) hdr.style.display = '';
+      if (sb) sb.style.display = '';
+      if (cats) cats.style.display = '';
+      if (mc) { mc.style.padding = ''; mc.style.marginLeft = ''; mc.style.marginTop = ''; mc.style.width = ''; }
+      document.body.classList.remove('chrome-hidden');
+    }
+  }
+  function activateView(id){
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const v = document.getElementById(id);
+    if (v) v.classList.add('active');
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    window.scrollTo(0,0);
+  }
+  const EXT_SOURCES = {
+    gust: 'https://raw.githubusercontent.com/nautilus-os/GUST/refs/heads/main/index.html'
+  };
+  const _extCache = {};
+  async function loadExt(name){
+    const frame = document.getElementById(name+'-frame');
+    const loading = document.getElementById(name+'-loading');
+    if (!frame) return;
+    if (frame.dataset.loaded === '1') { if (loading) loading.style.display='none'; return; }
+    if (loading) loading.style.display = 'flex';
+    try {
+      let html = _extCache[name];
+      if (!html) {
+        const proxies = [
+          u => u,
+          u => 'https://corsproxy.io/?' + encodeURIComponent(u),
+          u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+        ];
+        let lastErr;
+        for (const p of proxies) {
+          try {
+            const r = await fetch(p(EXT_SOURCES[name]), {cache:'no-store'});
+            if (r.ok) { html = await r.text(); break; }
+          } catch(e){ lastErr = e; }
+        }
+        if (!html) throw lastErr || new Error('fetch failed');
+        _extCache[name] = html;
+      }
+      frame.srcdoc = html;
+      frame.dataset.loaded = '1';
+      frame.onload = () => { if (loading) loading.style.display='none'; };
+    } catch(e){
+      if (loading) loading.textContent = 'Failed to load: ' + e.message;
+    }
+  }
+  function showPlusHome(){ setChromeHidden(true); activateView('view-plus-home'); }
+  function showExt(name){ setChromeHidden(true); activateView('view-'+name); loadExt(name); }
+  function checkHashRoute(){
+    const h = location.hash;
+    if (h === '#/plus-home') showPlusHome();
+    else if (h === '#/gust') showExt('gust');
+    else {
+      // restore chrome if leaving these special routes
+      if (document.body.classList.contains('chrome-hidden')) {
+        setChromeHidden(false);
+        ['view-plus-home','view-gust'].forEach(id=>{
+          const e=document.getElementById(id); if(e) e.classList.remove('active');
+        });
+      }
+    }
+  }
+  window.addEventListener('hashchange', checkHashRoute);
+  document.addEventListener('DOMContentLoaded', () => setTimeout(checkHashRoute, 300));
+  setTimeout(checkHashRoute, 1200);
+  // navigate() が呼ばれたら 特殊ビューを解除
+  const _on = window.navigate;
+  if (typeof _on === 'function') {
+    window.navigate = function(v){
+      if (v !== 'plus-home' && v !== 'gust') {
+        ['view-plus-home','view-gust'].forEach(id=>{
+          const e=document.getElementById(id); if(e) e.classList.remove('active');
+        });
+        if (document.body.classList.contains('chrome-hidden')) setChromeHidden(false);
+      }
+      return _on.apply(this, arguments);
+    };
+  }
+
+  console.log('[仲良しTube v1.7.6] パッチ適用完了');
 })();
 </script>
 </body>
