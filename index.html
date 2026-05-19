@@ -815,7 +815,7 @@ input:checked + .slider:before { transform: translateX(20px); }
  
 <div class="sidebar" id="sidebar">
   <div class="sidebar-item" id="nav-home" onclick="navigate('home')">
-    <svg viewBox="0 0 24 24"><path d="M12 2.1 2.5 10.4c-.3.3-.5.7-.5 1.1V21c0 .6.4 1 1 1h6c.6 0 1-.4 1-1v-5.5c0-.6.4-1 1-1h2c.6 0 1 .4 1 1V21c0 .6.4 1 1 1h6c.6 0 1-.4 1-1v-9.5c0-.4-.2-.8-.5-1.1L12 2.1z" style="fill:currentColor;stroke:none;"/></svg>
+    <svg viewBox="0 0 24 24"><path d="M12 3L2 12h3v8c0 .55.45 1 1 1h4v-7h4v7h4c.55 0 1-.45 1-1v-8h3l-3-2.7V5c0-.55-.45-1-1-1h-1c-.55 0-1 .45-1 1v1.1L12 3z" style="fill:currentColor;stroke:none;"/></svg>
     <span class="label">ホーム</span>
   </div>
   <div class="sidebar-item" id="nav-shorts" onclick="navigate('shorts')">
@@ -8324,6 +8324,42 @@ body.chrome-hidden #categories-bar { display:none !important; }
 
   console.info('[InvHealth v2] 役割分担 + 0.2秒レース有効化 (instances:',
     window.INVIDIOUS_INSTANCES.length, ')');
+})();
+</script>
+<script>
+// ===== 検索時にショート & チャンネルを必ず表示 =====
+(function(){
+  function fireShortsAndChannels(q){
+    if (!q) return;
+    try { if (typeof fetchShortsForSearch === 'function') fetchShortsForSearch(q); } catch(_){}
+    try {
+      if (typeof searchChannelsFromInvidious === 'function' && typeof renderSearchChannels === 'function') {
+        searchChannelsFromInvidious(q, 5).then(renderSearchChannels).catch(()=>{});
+      }
+    } catch(_){}
+  }
+  function wrap(){
+    if (typeof window.handleSearch !== 'function') return false;
+    const orig = window.handleSearch;
+    window.handleSearch = function(e, externalQuery){
+      const r = orig.apply(this, arguments);
+      try {
+        const q = externalQuery || (document.getElementById('search-input')||{}).value;
+        if (q) {
+          fireShortsAndChannels(q);
+          // データ取得が遅延しても確実に出すため再試行
+          setTimeout(()=>fireShortsAndChannels(q), 1500);
+          setTimeout(()=>fireShortsAndChannels(q), 4000);
+        }
+      } catch(_){}
+      return r;
+    };
+    return true;
+  }
+  if (!wrap()) {
+    const t = setInterval(()=>{ if (wrap()) clearInterval(t); }, 100);
+    setTimeout(()=>clearInterval(t), 15000);
+  }
 })();
 </script>
 </body>
