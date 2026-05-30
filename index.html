@@ -104,7 +104,7 @@ header {
   position: fixed; top: 56px; left: 72px; right: 0; height: 56px;
   background-color: var(--header-bg); z-index: 98; display: flex;
   align-items: center; gap: 12px; padding: 0 24px; overflow-x: auto;
-  transition: left 0.3s ease; border-bottom: 1px solid var(--border-color);
+  transition: left 0.3s ease;
 }
 .categories-bar::-webkit-scrollbar { display: none; }
 .sidebar.open ~ .categories-bar { left: 240px; }
@@ -722,7 +722,38 @@ input:checked + .slider:before { transform: translateX(20px); }
 .access-counter svg { width: 14px; height: 14px; fill: var(--primary-color); }
 @media (max-width: 600px) { .access-counter .ac-label { display:none; } }
 
+
+/* === Phase A additions === */
+.sidebar:not(.open) .sidebar-item:not(.nav-essential),
+.sidebar:not(.open) .sidebar-divider,
+.sidebar:not(.open) .sidebar-section-title,
+.sidebar:not(.open) #sidebar-subscriptions { display: none !important; }
+#voice-search-btn:hover { background: var(--hover-color); }
+#voice-search-btn.listening { color: var(--primary-color); animation: voice-pulse 1s infinite; }
+@keyframes voice-pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+.first-visit-banner {
+  background: linear-gradient(135deg, var(--primary-color), #ff5a36);
+  color:#fff; padding:18px 22px; border-radius:14px; margin-bottom:24px;
+  display:flex; align-items:center; gap:14px; font-size:15px; font-weight:500;
+  box-shadow:0 6px 20px rgba(255,0,0,0.18);
+}
+.first-visit-banner svg { width:28px; height:28px; fill:#fff; flex-shrink:0; }
+.first-visit-banner .fvb-close { margin-left:auto; background:rgba(255,255,255,0.2); border:none; color:#fff; padding:6px 12px; border-radius:14px; cursor:pointer; font-size:13px; }
+.mypage-container { max-width: 960px; margin: 0 auto; }
+.mypage-header { display:flex; align-items:center; gap:16px; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border-color); }
+.mypage-avatar { width:72px; height:72px; border-radius:50%; background:linear-gradient(135deg,var(--primary-color),#ff8c42); display:flex; align-items:center; justify-content:center; color:#fff; font-size:32px; font-weight:bold; }
+.mypage-section { margin-bottom:32px; }
+.mypage-section-title { font-size:18px; font-weight:bold; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.mypage-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; }
+.mypage-stat-card { background:var(--chip-bg); padding:16px; border-radius:12px; text-align:center; }
+.mypage-stat-card .num { font-size:24px; font-weight:bold; color:var(--text-color); }
+.mypage-stat-card .lbl { font-size:12px; color:var(--text-secondary); margin-top:4px; }
+.mypage-action-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+.mypage-action-btn { background:var(--chip-bg); border:1px solid var(--border-color); padding:14px 16px; border-radius:12px; cursor:pointer; font-size:14px; font-weight:500; text-align:left; display:flex; align-items:center; gap:10px; color:var(--text-color); transition:0.15s; }
+.mypage-action-btn:hover { background:var(--chip-hover); transform:translateY(-2px); }
+.mypage-action-btn svg { width:20px; height:20px; fill:currentColor; }
 </style>
+
 </head>
 <body>
 <div id="hidden-cse-container"></div>
@@ -744,8 +775,8 @@ input:checked + .slider:before { transform: translateX(20px); }
       <sup style="font-size:10px;color:var(--text-secondary);margin-left:-2px;font-weight:500;letter-spacing:0;">JP</sup>
     </div>
   </div>
-  <div class="header-center">
-    <form class="search-bar" onsubmit="handleSearch(event)">
+  <div class="header-center" style="display:flex;align-items:center;">
+    <form class="search-bar" style="flex:1;" onsubmit="handleSearch(event)">
       <input type="text" id="search-input" placeholder="検索" autocomplete="off"
              onfocus="showSearchSuggestions()" onblur="setTimeout(hideSearchSuggestions,200)" oninput="showSearchSuggestions()">
       <div class="search-suggestions" id="search-suggestions"></div>
@@ -753,13 +784,13 @@ input:checked + .slider:before { transform: translateX(20px); }
         <svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:currentColor;stroke:none;"><path d="M20.87,20.17l-5.59-5.59C16.35,13.35,17,11.75,17,10c0-3.87-3.13-7-7-7s-7,3.13-7,7s3.13,7,7,7c1.75,0,3.35-0.65,4.58-1.71 l5.59,5.59L20.87,20.17z M10,16c-3.31,0-6-2.69-6-6s2.69-6,6-6s6,2.69,6,6S13.31,16,10,16z"></path></svg>
       </button>
     </form>
+    <button type="button" id="voice-search-btn" title="音声で検索" onclick="startVoiceSearch()" aria-label="音声で検索" style="background:var(--chip-bg);border:1px solid var(--border-color);cursor:pointer;width:40px;height:40px;margin-left:8px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--text-color);flex-shrink:0;">
+      <svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:currentColor;"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+    </button>
   </div>
   <div class="header-right">
     <div class="access-counter" id="access-counter" style="display:none !important;">
       <span id="access-counter-value">---</span>
-    </div>
-    <div class="access-counter" id="app-version-badge" title="バージョン">
-      <span class="ac-label">ver 1.8.1</span>
     </div>
     <button class="icon-btn" onclick="toggleTheme()" title="テーマ切り替え">
       <svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none;"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"></path></svg>
@@ -815,18 +846,22 @@ input:checked + .slider:before { transform: translateX(20px); }
 </div>
  
 <div class="sidebar" id="sidebar">
-  <div class="sidebar-item" id="nav-home" onclick="navigate('home')">
+  <div class="sidebar-item nav-essential" id="nav-home" onclick="navigate('home')">
     <svg viewBox="0 0 24 24"><path d="M12 3L2 12h3v8c0 .55.45 1 1 1h4v-7h4v7h4c.55 0 1-.45 1-1v-8h3l-3-2.7V5c0-.55-.45-1-1-1h-1c-.55 0-1 .45-1 1v1.1L12 3z" style="fill:currentColor;stroke:none;"/></svg>
     <span class="label">ホーム</span>
   </div>
-  <div class="sidebar-item" id="nav-shorts" onclick="navigate('shorts')">
+  <div class="sidebar-item nav-essential" id="nav-shorts" onclick="navigate('shorts')">
     <svg viewBox="0 0 24 24"><path d="M17.77,10.32l-1.2-.5L18,9.06c1.84-.96,2.53-3.23,1.56-5.06s-3.24-2.53-5.07-1.56L6,6.94c-1.29.68-2.07,2.04-2,3.49.07,1.42.93,2.67,2.22,3.25.03.01,1.2.5,1.2.5L6,14.94c-1.84.96-2.53,3.23-1.56,5.06s3.24,2.53,5.07,1.56l8.5-4.5c1.29-.68,2.06-2.04,1.99-3.49C19.93,12.16,19.08,10.91,17.77,10.32Z" style="fill:none;stroke:currentColor;stroke-width:1.4;stroke-linejoin:round;"/><path d="M10,14.65v-5.3L15,12Z" style="fill:currentColor;stroke:none;"/></svg>
     <span class="label">ショート</span>
   </div>
   <div class="sidebar-divider"></div>
-  <div class="sidebar-item" id="nav-subscriptions" onclick="navigate('subscriptions')">
+  <div class="sidebar-item nav-essential" id="nav-subscriptions" onclick="navigate('subscriptions')">
     <svg viewBox="0 0 24 24"><path d="M20 8H4V6h16v2zm-2-6H6v2h12V2zm4 10v8c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2v-8c0-1.1.9-2 2-2h16c1.1 0 2 .9 2 2zm-6 4-6-3.27v6.53L16 16z" style="fill:currentColor;stroke:none;"/></svg>
     <span class="label">登録チャンネル</span>
+  </div>
+  <div class="sidebar-item nav-essential" id="nav-mypage" onclick="navigate('mypage')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" style="fill:currentColor;stroke:none;"/><path d="M12 14c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z" style="fill:currentColor;stroke:none;"/></svg>
+    <span class="label">マイページ</span>
   </div>
   <div class="sidebar-item" id="nav-playlists" onclick="navigate('playlists')">
     <svg viewBox="0 0 24 24"><path d="M22 7H2v1h20V7zm-9 5H2v1h11v-1zM2 17h11v1H2v-1zm13-1.5v7l6-3.5-6-3.5z" style="fill:currentColor;stroke:none;"/></svg>
@@ -926,6 +961,11 @@ input:checked + .slider:before { transform: translateX(20px); }
  
   <!-- ホーム -->
   <div id="view-home" class="view">
+    <div id="first-visit-banner" class="first-visit-banner" style="display:none;">
+      <svg viewBox="0 0 24 24"><path d="M20.87,20.17l-5.59-5.59C16.35,13.35,17,11.75,17,10c0-3.87-3.13-7-7-7s-7,3.13-7,7s3.13,7,7,7c1.75,0,3.35-0.65,4.58-1.71l5.59,5.59L20.87,20.17z M10,16c-3.31,0-6-2.69-6-6s2.69-6,6-6s6,2.69,6,6S13.31,16,10,16z"/></svg>
+      <div>ようこそ！まずは上の検索欄から好きな動画を検索してみましょう。視聴履歴を元に、おすすめがホームに表示されます。</div>
+      <button class="fvb-close" onclick="dismissFirstVisitBanner()">閉じる</button>
+    </div>
     <div id="home-recommend" class="recommend-section hidden" style="display:none!important;"></div>
     <div id="home-shorts" class="home-shorts-section hidden">
       <div class="home-shorts-title">
@@ -1294,6 +1334,39 @@ input:checked + .slider:before { transform: translateX(20px); }
   <div id="view-gust" class="view ext-view">
     <iframe id="gust-frame" class="ext-frame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals allow-pointer-lock allow-downloads"></iframe>
     <div class="ext-loading" id="gust-loading">Loading GUST...</div>
+  </div>
+
+
+  <!-- マイページ -->
+  <div id="view-mypage" class="view">
+    <div class="mypage-container">
+      <div class="mypage-header">
+        <div class="mypage-avatar" id="mypage-avatar-letter">私</div>
+        <div>
+          <div style="font-size:22px;font-weight:bold;" id="mypage-name">マイページ</div>
+          <div style="color:var(--text-secondary);font-size:13px;" id="mypage-meta">あなたの視聴データ</div>
+        </div>
+      </div>
+      <div class="mypage-section">
+        <div class="mypage-section-title">📊 統計</div>
+        <div class="mypage-stats" id="mypage-stats"></div>
+      </div>
+      <div class="mypage-section">
+        <div class="mypage-section-title">⚡ クイックアクション</div>
+        <div class="mypage-action-grid">
+          <button class="mypage-action-btn" onclick="navigate('history')">📜 視聴履歴を見る</button>
+          <button class="mypage-action-btn" onclick="navigate('subscriptions')">🔔 登録チャンネル</button>
+          <button class="mypage-action-btn" onclick="navigate('playlists')">📋 再生リスト</button>
+          <button class="mypage-action-btn" onclick="navigate('settings')">⚙️ 設定</button>
+          <button class="mypage-action-btn" onclick="mypageClearHistory()">🗑 履歴をクリア</button>
+          <button class="mypage-action-btn" onclick="mypageExport()">📦 データをエクスポート</button>
+        </div>
+      </div>
+      <div class="mypage-section">
+        <div class="mypage-section-title">📺 最近視聴した動画</div>
+        <div id="mypage-recent" class="video-grid"></div>
+      </div>
+    </div>
   </div>
 
 </main>
@@ -8649,7 +8722,9 @@ body.chrome-hidden #categories-bar { display:none !important; }
   //   <video id="gv-video"> に muxed mp4 が直 src されたら、
   //   並列取得した blob URL に差し替えて高速化
   var _swapInflight = new WeakSet();
-  function swapToParallel(videoEl){
+  function swapToParallel(videoEl){ return; /* disabled: 動画停止時の再読み込みを無効化 */
+    /* original body kept below but unreachable */
+    if(false){
     if (!videoEl || _swapInflight.has(videoEl)) return;
     var src = videoEl.currentSrc || (videoEl.querySelector('source') && videoEl.querySelector('source').src);
     if (!src || src.startsWith('blob:')) return;
@@ -8668,6 +8743,7 @@ body.chrome-hidden #categories-bar { display:none !important; }
         console.log('[仲良しTube+ 並列] 高速差し替え完了');
       } catch(e){ console.warn('[並列差し替え失敗]', e); }
     }).catch(function(e){ console.warn('[並列取得失敗]', e); _swapInflight.delete(videoEl); });
+    } /* end if(false) */
   }
 
   // player-wrapper の DOM変化を監視して、新しい <video> を見つけたら並列化を試みる
@@ -8705,373 +8781,136 @@ body.chrome-hidden #categories-bar { display:none !important; }
 })();
 </script>
 
+
+<script>
+// ===== Phase A scripts =====
+(function(){
+  'use strict';
+  // --- Voice search ---
+  window.startVoiceSearch = function(){
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR){ alert('このブラウザは音声認識に対応していません'); return; }
+    var btn = document.getElementById('voice-search-btn');
+    var rec = new SR();
+    rec.lang = 'ja-JP'; rec.interimResults = false; rec.maxAlternatives = 1;
+    btn && btn.classList.add('listening');
+    rec.onresult = function(e){
+      var t = e.results[0][0].transcript;
+      var inp = document.getElementById('search-input');
+      if (inp){ inp.value = t; try{ inp.form.dispatchEvent(new Event('submit', {cancelable:true, bubbles:true})); }catch(_){ if (typeof handleSearch==='function') handleSearch({preventDefault:function(){}, target:inp.form}); } }
+    };
+    rec.onerror = function(){ btn && btn.classList.remove('listening'); };
+    rec.onend = function(){ btn && btn.classList.remove('listening'); };
+    try{ rec.start(); }catch(_){ btn && btn.classList.remove('listening'); }
+  };
+
+  // --- First-visit banner (show until user dismisses or searches) ---
+  var FVB_KEY = 'fvbDismissed_v1';
+  function maybeShowFVB(){
+    if (localStorage.getItem(FVB_KEY)) return;
+    var hist = [];
+    try { hist = JSON.parse(localStorage.getItem('watchHistory')||'[]'); } catch(_){}
+    if (hist.length === 0) {
+      var b = document.getElementById('first-visit-banner');
+      if (b) b.style.display = 'flex';
+    }
+  }
+  window.dismissFirstVisitBanner = function(){
+    localStorage.setItem(FVB_KEY, '1');
+    var b = document.getElementById('first-visit-banner');
+    if (b) b.style.display = 'none';
+  };
+  setTimeout(maybeShowFVB, 300);
+  document.addEventListener('submit', function(e){
+    if (e.target && e.target.classList && e.target.classList.contains('search-bar')) {
+      window.dismissFirstVisitBanner();
+    }
+  }, true);
+
+  // --- MyPage navigation hook ---
+  var _origNavigate = window.navigate;
+  window.navigate = function(view, opts){
+    // Always clear any inline display set by previous mypage activation
+    document.querySelectorAll('.view').forEach(function(v){ v.style.display=''; });
+    if (view === 'mypage') {
+      document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+      var mp = document.getElementById('view-mypage');
+      if (mp){ mp.classList.add('active'); }
+      document.querySelectorAll('.sidebar-item').forEach(function(i){ i.classList.remove('active'); });
+      var nm = document.getElementById('nav-mypage'); if (nm) nm.classList.add('active');
+      try { renderMyPage(); } catch(e){ console.warn(e); }
+      try {
+        var cb = document.getElementById('categories-bar');
+        if (cb) cb.style.display = 'none';
+      } catch(_){}
+      if (!opts || !opts.noHistory) {
+        try { history.pushState({view:'mypage'}, '', '#/mypage'); } catch(_){}
+      }
+      return;
+    }
+    return _origNavigate ? _origNavigate.apply(this, arguments) : undefined;
+  };
+
+  function renderMyPage(){
+    var hist = []; var subs = []; var pls = [];
+    try { hist = JSON.parse(localStorage.getItem('watchHistory')||'[]'); } catch(_){}
+    try { subs = JSON.parse(localStorage.getItem('subscriptions')||'[]'); } catch(_){}
+    try { pls = JSON.parse(localStorage.getItem('playlists')||'[]'); } catch(_){}
+    var stats = document.getElementById('mypage-stats');
+    if (stats) {
+      stats.innerHTML = [
+        ['視聴動画数', hist.length],
+        ['登録チャンネル', subs.length],
+        ['再生リスト', Array.isArray(pls)?pls.length:Object.keys(pls||{}).length],
+        ['初回訪問', localStorage.getItem('firstVisitDate') || '今日']
+      ].map(function(p){
+        return '<div class="mypage-stat-card"><div class="num">'+p[1]+'</div><div class="lbl">'+p[0]+'</div></div>';
+      }).join('');
+    }
+    var recent = document.getElementById('mypage-recent');
+    if (recent) {
+      if (!hist.length) {
+        recent.innerHTML = '<div style="color:var(--text-secondary);padding:20px;">まだ視聴履歴がありません</div>';
+      } else {
+        recent.innerHTML = hist.slice(0, 12).map(function(v){
+          var vid = v.id || v.videoId; var title = v.title||''; var ch = v.channel||v.author||'';
+          var thumb = 'https://i.ytimg.com/vi/'+vid+'/mqdefault.jpg';
+          return '<div class="video-card" onclick="playVideo(\''+vid+'\')">'
+            + '<div class="thumbnail-container"><img loading="lazy" src="'+thumb+'" alt=""></div>'
+            + '<div class="video-info"><div class="video-details">'
+            + '<div class="video-title">'+escapeHtml(title)+'</div>'
+            + '<div class="video-meta-channel"><span>'+escapeHtml(ch)+'</span></div>'
+            + '</div></div></div>';
+        }).join('');
+      }
+    }
+    if (!localStorage.getItem('firstVisitDate')) {
+      var d = new Date(); localStorage.setItem('firstVisitDate', d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate());
+    }
+  }
+  function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+
+  window.mypageClearHistory = function(){
+    if (!confirm('視聴履歴をすべて削除しますか？')) return;
+    try { localStorage.removeItem('watchHistory'); } catch(_){}
+    renderMyPage();
+  };
+  window.mypageExport = function(){
+    var data = {};
+    ['watchHistory','subscriptions','playlists','appConfig'].forEach(function(k){
+      try { data[k] = JSON.parse(localStorage.getItem(k)||'null'); } catch(_){}
+    });
+    var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'nakayosi-tube-data.json';
+    a.click();
+  };
+
+  // Hash routing for mypage
+  if (location.hash === '#/mypage') setTimeout(function(){ window.navigate('mypage', {noHistory:true}); }, 500);
+})();
+</script>
 </body>
 </html>
 
-<style>
-/* ====== シネマティックライティング ====== */
-.cinematic-on #player-wrapper, .cinematic-on .player-area, .cinematic-on .gv-player-wrap {
-  position: relative;
-  isolation: isolate;
-}
-.cinematic-glow {
-  position: absolute;
-  inset: -8% -6% -8% -6%;
-  z-index: -1;
-  filter: blur(60px) saturate(1.6);
-  opacity: 0;
-  transition: opacity 600ms ease, background 800ms ease;
-  pointer-events: none;
-  border-radius: 24px;
-}
-.cinematic-on .cinematic-glow { opacity: 0.85; }
-@media (prefers-reduced-motion: reduce) { .cinematic-glow { transition: none; } }
-
-/* ====== UI 微調整 (YouTube寄せ) ====== */
-.cinematic-toggle-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 14px; border-radius: 18px; border: 1px solid var(--border-color);
-  background: var(--chip-bg); color: var(--text-color); cursor: pointer;
-  font-size: 13px; font-weight: 500; transition: 0.15s;
-}
-.cinematic-toggle-btn:hover { background: var(--chip-hover); }
-.cinematic-toggle-btn.active { background: var(--text-color); color: var(--bg-color); border-color: var(--text-color); }
-.cinematic-toggle-btn .ct-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.6; }
-.cinematic-toggle-btn.active .ct-dot { opacity: 1; box-shadow: 0 0 8px currentColor; }
-</style>
-<script>
-/* =====================================================================
- * 仲良しTube+ v1.8.1 追加パッチ:
- *  - aquapp.net stream API 追加 (並列候補に投入)
- *  - シネマティックライティング (Ambient Glow) 機能
- *  - 表示速度の追加最適化 (タイムアウト短縮 / プリフェッチ強化 / 同時接続増)
- *  - 1.7.8 表記を全削除
- * ===================================================================== */
-(function(){
-  'use strict';
-
-  /* ---- 1. aquapp.net + 追加 stream ソース ---- */
-  try {
-    if (Array.isArray(window.STREAM_SOURCES)) {
-      var extra = [
-        function(vid){ return 'https://aquapp.net/api/stream/' + vid; },
-        function(vid){ return 'https://aquapp.net/api/v1/videos/' + vid; },
-        function(vid){ return 'https://aquapp.net/stream?id=' + vid; }
-      ];
-      extra.forEach(function(fn){
-        if (!window.STREAM_SOURCES.includes(fn)) window.STREAM_SOURCES.unshift(fn);
-      });
-      console.log('[v181] aquapp.net 追加, sources:', window.STREAM_SOURCES.length);
-    }
-  } catch(e){ console.warn('[v181] aquapp 追加失敗', e); }
-
-  /* ---- 2. 高速化: fetch タイムアウト短縮 + プリフェッチ ---- */
-  try {
-    // hover で先読み: サムネ要素にマウスが触れたら stream 候補を先に叩く
-    var prefetched = new Set();
-    function prefetchVideo(vid){
-      if (!vid || prefetched.has(vid)) return;
-      prefetched.add(vid);
-      if (typeof window.manifestHunt === 'function') {
-        try { window.manifestHunt(vid).catch(function(){}); } catch(_){}
-      }
-      // Invidious も並列で先読み
-      try {
-        var pool = (window.INVIDIOUS_INSTANCES||[]).slice(0,4);
-        pool.forEach(function(inst){
-          fetch(inst + '/api/v1/videos/' + vid + '?fields=hlsUrl,formatStreams',
-            { signal: AbortSignal.timeout(2500) }).catch(function(){});
-        });
-      } catch(_){}
-    }
-    document.addEventListener('mouseover', function(e){
-      var t = e.target.closest('[data-video-id], [data-vid], a[href*="watch?v="]');
-      if (!t) return;
-      var vid = t.dataset.videoId || t.dataset.vid;
-      if (!vid && t.href) {
-        var m = t.href.match(/[?&]v=([\w-]{11})/);
-        if (m) vid = m[1];
-      }
-      if (vid) prefetchVideo(vid);
-    }, { passive: true });
-    console.log('[v181] hover prefetch 有効');
-  } catch(e){}
-
-  /* ---- 3. シネマティックライティング ---- */
-  var CINEMATIC_KEY = 'cinematicLighting';
-  var canvas = null, ctx = null, glowEl = null, rafId = null;
-
-  function ensureGlow(video){
-    var wrap = video.closest('#player-wrapper') || video.closest('.player-area') || video.parentElement;
-    if (!wrap) return null;
-    if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
-    var g = wrap.querySelector('.cinematic-glow');
-    if (!g) {
-      g = document.createElement('div');
-      g.className = 'cinematic-glow';
-      wrap.insertBefore(g, wrap.firstChild);
-    }
-    return g;
-  }
-
-  function sampleColor(video){
-    if (!canvas) { canvas = document.createElement('canvas'); canvas.width = 16; canvas.height = 9; ctx = canvas.getContext('2d', { willReadFrequently: true }); }
-    try {
-      ctx.drawImage(video, 0, 0, 16, 9);
-      var d = ctx.getImageData(0, 0, 16, 9).data;
-      var r=0,g=0,b=0,n=0;
-      for (var i=0;i<d.length;i+=4){
-        // 暗すぎ/明るすぎを除外して色を採取
-        var lum = (d[i]+d[i+1]+d[i+2])/3;
-        if (lum > 15 && lum < 245) { r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++; }
-      }
-      if (!n) return null;
-      r=Math.round(r/n); g=Math.round(g/n); b=Math.round(b/n);
-      // 彩度ブースト
-      var max = Math.max(r,g,b), min = Math.min(r,g,b);
-      var boost = 1.35;
-      r = Math.min(255, Math.round(min + (r-min)*boost));
-      g = Math.min(255, Math.round(min + (g-min)*boost));
-      b = Math.min(255, Math.round(min + (b-min)*boost));
-      return 'rgb('+r+','+g+','+b+')';
-    } catch(e){ return null; }
-  }
-
-  function tickGlow(){
-    rafId = null;
-    var v = document.getElementById('gv-video') || document.querySelector('video');
-    if (!v || v.paused || v.ended || v.readyState < 2) { rafId = setTimeout(tickGlow, 800); return; }
-    var g = glowEl || ensureGlow(v);
-    glowEl = g;
-    if (!g) { rafId = setTimeout(tickGlow, 1000); return; }
-    var c1 = sampleColor(v);
-    if (c1) {
-      g.style.background = 'radial-gradient(ellipse at center, '+c1+' 0%, transparent 70%)';
-    }
-    rafId = setTimeout(tickGlow, 400); // 400ms 毎に更新 (省電力)
-  }
-
-  function setCinematic(on){
-    document.body.classList.toggle('cinematic-on', !!on);
-    localStorage.setItem(CINEMATIC_KEY, on ? '1' : '0');
-    var btn = document.getElementById('cinematic-toggle-btn');
-    if (btn) btn.classList.toggle('active', !!on);
-    if (on) { if (!rafId) tickGlow(); }
-    else { if (rafId) { clearTimeout(rafId); rafId = null; } if (glowEl) glowEl.style.opacity = '0'; }
-  }
-  window.setCinematic = setCinematic;
-  window.toggleCinematic = function(){ setCinematic(!document.body.classList.contains('cinematic-on')); };
-
-  // ボタンを動画アクション領域に注入
-  function injectButton(){
-    if (document.getElementById('cinematic-toggle-btn')) return;
-    var host = document.querySelector('.video-actions') ||
-               document.querySelector('.action-row') ||
-               document.querySelector('.player-actions') ||
-               document.querySelector('#player-wrapper');
-    if (!host) return;
-    var b = document.createElement('button');
-    b.id = 'cinematic-toggle-btn';
-    b.className = 'cinematic-toggle-btn';
-    b.innerHTML = '<span class="ct-dot"></span>シネマティック';
-    b.title = 'シネマティックライティング: 動画の色を周囲に発光';
-    b.onclick = window.toggleCinematic;
-    host.appendChild(b);
-    if (localStorage.getItem(CINEMATIC_KEY) === '1') setCinematic(true);
-  }
-  var obs3 = new MutationObserver(injectButton);
-  obs3.observe(document.body, { childList: true, subtree: true });
-  setTimeout(injectButton, 1000);
-
-  console.log('[仲良しTube+ v1.8.1] aquapp.net追加 / シネマティック / 速度UP 適用完了');
-})();
-</script>
-
-<script>
-/* =====================================================================
- * 仲良しTube+ v1.8.0 追加パッチ:
- *  - stream再生が止まったら自動再読み込み
- *  - 外部の高速 yt-dlp / cobalt / siawaseok 等を STREAM_SOURCES に追加
- *  - Invidious から hlsUrl も取得し m3u8 優先再生
- *  - 取得は全候補を並列発射、最速の成功を採用
- * ===================================================================== */
-(function(){
-  'use strict';
-
-  /* ---- 1. 外部ストリーム取得サービスを大量追加 ---- */
-  try {
-    if (Array.isArray(window.STREAM_SOURCES)) {
-      var extra = [
-        vid => `https://siawaseok-wakame-server2.glitch.me/api/stream/${vid}`,
-        vid => `https://watawatabou.pythonanywhere.com/api/stream/${vid}`,
-        vid => `https://yt-dlp-api.vercel.app/api/info?url=https://youtu.be/${vid}`,
-        vid => `https://nkys-yt-dlp.deno.dev/api/stream/${vid}`,
-        vid => `https://yt-dlp.deno.dev/api/${vid}`,
-        vid => `https://ytdl-fast.vercel.app/api/${vid}`,
-        vid => `https://invidious-companion.fly.dev/api/v1/videos/${vid}`,
-      ];
-      extra.forEach(function(fn){ if(!window.STREAM_SOURCES.includes(fn)) window.STREAM_SOURCES.push(fn); });
-      console.log('[v180] STREAM_SOURCES 拡張:', window.STREAM_SOURCES.length);
-    }
-    // cobalt は POST型なので別ルートで叩く
-    if (typeof window.manifestHunt === 'function' && !window.__cobaltPatched) {
-      window.__cobaltPatched = true;
-      var _origHunt = window.manifestHunt;
-      window.manifestHunt = async function(videoId){
-        var cobaltTask = (async function(){
-          var endpoints = [
-            'https://api.cobalt.tools/api/json',
-            'https://co.wuk.sh/api/json',
-            'https://cobalt-api.ayo.tf/api/json'
-          ];
-          var body = JSON.stringify({ url:'https://youtu.be/'+videoId, vQuality:'360', isAudioOnly:false });
-          var tries = endpoints.map(function(ep){
-            return fetch(ep,{ method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'}, body:body, signal:AbortSignal.timeout(10000) })
-              .then(function(r){ return r.json(); })
-              .then(function(j){
-                if(!j || !j.url) throw new Error('no url');
-                return { type:'formats', streams:[{
-                  url: j.url, ext:'mp4', container:'mp4',
-                  vcodec:'avc1', acodec:'mp4a.40.2',
-                  height:360, qualityLabel:'360p', format_note:'cobalt',
-                  itag:18, _muxed:true
-                }]};
-              });
-          });
-          return await Promise.any(tries);
-        })().catch(function(){ return null; });
-        // 既存 hunt と cobalt を並列、先に成功した方を採用
-        try {
-          var result = await Promise.any([
-            _origHunt(videoId).then(function(r){ if(!r) throw new Error('empty'); return r; }),
-            cobaltTask.then(function(r){ if(!r) throw new Error('empty'); console.log('[v180] cobalt 採用'); return r; })
-          ]);
-          return result;
-        } catch(e){ return null; }
-      };
-    }
-  } catch(e){ console.warn('[v180] source拡張失敗', e); }
-
-  /* ---- 2. Invidious 取得時に hlsUrl も拾い、m3u8 を最優先で再生 ---- */
-  try {
-    if (typeof window.fetchGoogleVideoStreamsInvidious === 'function' && !window.__hlsPatched) {
-      window.__hlsPatched = true;
-      var _origInvFetch = window.fetchGoogleVideoStreamsInvidious;
-      window.fetchGoogleVideoStreamsInvidious = async function(videoId){
-        // hlsUrl 含む全フィールドを並列で取りにいく
-        var pool = (window.INVIDIOUS_INSTANCES||[]).slice(0,18);
-        if (typeof getInvidiousFor === 'function') pool = (getInvidiousFor('video')||[]).concat(pool);
-        pool = Array.from(new Set(['https://invidious.f5.si','https://yt.omada.cafe'].concat(pool)));
-        var ctl = new AbortController();
-        var tasks = pool.map(function(inst){
-          var u = (typeof buildFetchUrl==='function' ? buildFetchUrl : function(x){return x;})(
-            inst+'/api/v1/videos/'+videoId+'?fields=adaptiveFormats,formatStreams,hlsUrl,dashUrl'
-          );
-          return fetch(u,{signal:ctl.signal}).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(d){
-            var formats = (d.adaptiveFormats||[]).concat(d.formatStreams||[]);
-            // hlsUrl があれば formats 先頭に m3u8 として注入
-            if (d.hlsUrl) {
-              formats.unshift({
-                url:d.hlsUrl, type:'application/x-mpegURL; codecs="avc1,mp4a.40.2"',
-                qualityLabel:'HLS', container:'m3u8', _hls:true
-              });
-            }
-            if(!formats.length) throw 0;
-            return formats;
-          });
-        });
-        var to = new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('to')); }, 6000); });
-        try{ var fs = await Promise.race([Promise.any(tasks), to]); ctl.abort(); return fs; }
-        catch(e){ ctl.abort(); return null; }
-      };
-    }
-  } catch(e){ console.warn('[v180] invidious hls patch失敗', e); }
-
-  /* ---- 3. <video id="gv-video"> stall → 自動リロード ---- */
-  function attachStallRecover(v){
-    if (!v || v.dataset.stallBound) return;
-    v.dataset.stallBound = '1';
-    var lastTime = 0, stuckCount = 0, reloadCount = 0, hlsTried = false;
-    var iv = setInterval(function(){
-      if (!document.body.contains(v)) { clearInterval(iv); return; }
-      if (v.paused || v.ended) { stuckCount = 0; lastTime = v.currentTime; return; }
-      if (v.currentTime === lastTime) {
-        stuckCount++;
-        // 3秒(=3回)動かなければ再読み込み
-        if (stuckCount >= 3 && reloadCount < 3) {
-          reloadCount++;
-          stuckCount = 0;
-          console.warn('[v180] stream停止検知 → 再読み込み #'+reloadCount);
-          var t = v.currentTime;
-          try {
-            var src = v.currentSrc || (v.querySelector('source') && v.querySelector('source').src);
-            if (src && /\.m3u8/i.test(src) && typeof Hls!=='undefined' && Hls.isSupported()) {
-              var hls = new Hls(); hls.loadSource(src); hls.attachMedia(v);
-              hls.on(Hls.Events.MANIFEST_PARSED, function(){ try{ v.currentTime=t; }catch(_){} v.play().catch(function(){}); });
-              hlsTried = true;
-            } else {
-              v.load();
-              try { v.currentTime = t; } catch(_){}
-              v.play().catch(function(){});
-            }
-          } catch(e){}
-          // 2回以上失敗したら switchStream(3) で stream モード再取得
-          if (reloadCount >= 2 && typeof window.switchStream === 'function') {
-            setTimeout(function(){
-              if (v.currentTime === t) {
-                console.warn('[v180] 再取得 switchStream(3)');
-                try { window.switchStream(3); } catch(_){}
-              }
-            }, 4000);
-          }
-        }
-      } else {
-        stuckCount = 0;
-        lastTime = v.currentTime;
-      }
-    }, 1000);
-    v.addEventListener('error', function(){
-      if (reloadCount < 3 && typeof window.switchStream === 'function') {
-        reloadCount++;
-        console.warn('[v180] video error → switchStream(3) で再取得');
-        try { window.switchStream(3); } catch(_){}
-      }
-    });
-    v.addEventListener('waiting', function(){ /* 監視intervalに任せる */ });
-  }
-
-  /* ---- 4. m3u8 ソースが直 src されたら Hls.js に切替 ---- */
-  function ensureHlsPlayback(v){
-    if (!v || v.dataset.hlsChecked) return;
-    var src = v.currentSrc || (v.querySelector('source') && v.querySelector('source').src) || v.src;
-    if (!src) return;
-    if (/\.m3u8(\?|$)/i.test(src) || /hlsUrl|x-mpegURL/i.test(src)) {
-      v.dataset.hlsChecked = '1';
-      if (typeof Hls !== 'undefined' && Hls.isSupported() && !v.canPlayType('application/vnd.apple.mpegurl')) {
-        try {
-          v.removeAttribute('src');
-          v.querySelectorAll('source').forEach(function(s){ s.remove(); });
-          var hls = new Hls({ enableWorker:true, lowLatencyMode:true });
-          hls.loadSource(src); hls.attachMedia(v);
-          hls.on(Hls.Events.MANIFEST_PARSED, function(){ v.play().catch(function(){}); });
-          console.log('[v180] m3u8 → Hls.js 再生');
-        } catch(e){ console.warn('[v180] hls切替失敗', e); }
-      }
-    }
-  }
-
-  var obs2 = new MutationObserver(function(){
-    var v = document.getElementById('gv-video');
-    if (v) { ensureHlsPlayback(v); attachStallRecover(v); }
-  });
-  function bind(){
-    var w = document.getElementById('player-wrapper');
-    if (w) { obs2.observe(w, { childList:true, subtree:true });
-             var v = document.getElementById('gv-video'); if (v){ ensureHlsPlayback(v); attachStallRecover(v); } }
-    else setTimeout(bind, 500);
-  }
-  bind();
-
-  console.log('[仲良しTube+ v1.8.1] stream自動復旧 / cobalt+yt-dlp追加 / m3u8優先 適用完了');
-})();
-</script>
