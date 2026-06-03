@@ -1,0 +1,71 @@
+/* ===== アニメーション: @keyframes ===== */
+
+@keyframes spin {
+  to {
+    transform:rotate(360deg);
+  }
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform:rotate(360deg);
+  }
+}
+
+@keyframes voice-pulse {
+  0%,100% {
+    opacity:1;
+  }
+50% {
+    opacity:0.4;
+  }
+}
+
+@keyframes phScan {
+  from {
+    transform:translateY(-100%);
+  }
+to {
+    transform:translateY(100%);
+  }
+}
+
+@keyframes phGlitch {
+  0%,90%,100% {
+    clip-path:inset(0 0 0 0);
+    transform:translate(0,0);
+  }
+92% {
+    clip-path:inset(20% 0 60% 0);
+    transform:translate(-3px,1px);
+  }
+94% {
+    clip-path:inset(60% 0 10% 0);
+    transform:translate(3px,-1px);
+  }
+96% {
+    clip-path:inset(40% 0 30% 0);
+    transform:translate(-2px,0);
+  }
+}
+
+@keyframes phBar {
+  0%,100% {
+    opacity:.2;
+    transform:scaleY(.6)
+  }
+50% {
+    opacity:1;
+    transform:scaleY(1.6);
+    box-shadow:0 0 8px #00e5ff
+  }
+}
+
+@keyframes phPulse {
+  0%,100% {
+    opacity:1
+  }
+50% {
+    opacity:.3
+  }
+}
