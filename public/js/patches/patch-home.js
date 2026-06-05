@@ -70,18 +70,11 @@
     if (!p) return;
     if (!e.target.closest('.stream-wrap')) p.classList.remove('open');
   });
-  // ホームに遷移したらショート & おすすめを常にロード
+  // ホームに遷移したらloadTrendを呼ぶ（fetchShortsForHomeはloadTrend内で呼ばれる）
   const _origNav = window.navigate;
   if (typeof _origNav === 'function') {
     window.navigate = function(viewName, opts){
-      const r = _origNav.apply(this, arguments);
-      if (viewName === 'home') {
-        setTimeout(() => {
-          try { if (typeof fetchShortsForHome === 'function') fetchShortsForHome(); } catch(e){}
-          // おすすめ削除済み
-        }, 100);
-      }
-      return r;
+      return _origNav.apply(this, arguments);
     };
   }
 })();
@@ -249,7 +242,11 @@ window.__fetchChannelIconFor = (function(){
   }
 })();
 // ===== 新しいloadTrend：高速・重複なし・スピナー表示 =====
+let _loadTrendRunning = false;
 window.loadTrend = async function(){
+  // 並行実行ガード：既に実行中なら何もしない
+  if (_loadTrendRunning) return;
+  _loadTrendRunning = true;
   const grid = document.getElementById('home-grid');
   const loader = document.getElementById('home-loader');
   if (loader) loader.classList.remove('hidden');
@@ -258,37 +255,49 @@ window.loadTrend = async function(){
   // 取得できた動画から順に表示（ストリーミング描画）
   const _streamedIds = new Set();
   const _prevPartial = window.__onHomePartial;
-  window.__onHomePartial = function(v){
-    try {
-      if (!v || !v.videoId || _streamedIds.has(v.videoId)) return;
-      _streamedIds.add(v.videoId);
-      const mapped = [{
-        id: v.videoId,
-        title: v.title,
-        channel: v.author,
-        isShort: false,
-        isLive: v.liveNow||false,
-        authorThumb: v.authorThumbnails && v.authorThumbnails[0] ? v.authorThumbnails[0].url : ('https://i.pravatar.cc/150?u='+encodeURIComponent(v.author||'')),
-        duration: v.lengthSeconds||0,
-        published: v.publishedText||'',
-        viewCount: v.viewCount||0,
-        publishedTimestamp: v.published||0
-      }];
-      if (typeof searchContext !== 'undefined') searchContext = 'trend';
-      if (typeof renderResults === 'function') renderResults(mapped, true);
-      if (loader) loader.classList.add('hidden');
-      // チャンネルアイコンを正しく取得（authorThumbnails が無い動画用）
-      if (!v.authorThumbnails && v.author && typeof window.__fetchChannelIconFor === 'function') {
-        window.__fetchChannelIconFor(v.videoId, v.author);
-      }
-    } catch(e) { console.warn('[homePartial] render err', e); }
-  };
-  const videos = await window.fetchHomeMixed(22);
-  // 復元
-  window.__onHomePartial = _prevPartial;
+  let videos = [];
+  try {
+    window.__onHomePartial = function(v){
+      try {
+        if (!v || !v.videoId || _streamedIds.has(v.videoId)) return;
+        _streamedIds.add(v.videoId);
+        const mapped = [{
+          id: v.videoId,
+          title: v.title,
+          channel: v.author,
+          isShort: false,
+          isLive: v.liveNow||false,
+          authorThumb: v.authorThumbnails && v.authorThumbnails[0] ? v.authorThumbnails[0].url : ('https://i.pravatar.cc/150?u='+encodeURIComponent(v.author||'')),
+          duration: v.lengthSeconds||0,
+          published: v.publishedText||'',
+          viewCount: v.viewCount||0,
+          publishedTimestamp: v.published||0
+        }];
+        if (typeof searchContext !== 'undefined') searchContext = 'trend';
+        if (typeof renderResults === 'function') renderResults(mapped, true);
+        if (loader) loader.classList.add('hidden');
+        // チャンネルアイコンを正しく取得（authorThumbnails が無い動画用）
+        if (!v.authorThumbnails && v.author && typeof window.__fetchChannelIconFor === 'function') {
+          window.__fetchChannelIconFor(v.videoId, v.author);
+        }
+      } catch(e) { console.warn('[homePartial] render err', e); }
+    };
+    videos = await window.fetchHomeMixed(22);
+  } finally {
+    // 例外・正常終了いずれの場合も必ず復元
+    window.__onHomePartial = _prevPartial;
+    _loadTrendRunning = false;
+  }
   if (!videos.length) {
     // フォールバック：従来の検索ベースで取得
-    try { if (typeof triggerSearch === 'function') triggerSearch('人気 日本','trend'); } catch(e){}
+    // isFetching が残っている場合はリセットしてから呼ぶ
+    try {
+      if (typeof isFetching !== 'undefined') isFetching = false;
+      if (typeof triggerSearch === 'function') triggerSearch('人気 日本','trend');
+      else if (loader) loader.classList.add('hidden');
+    } catch(e) {
+      if (loader) loader.classList.add('hidden');
+    }
     return;
   }
   const mapped = videos.map(v => ({
@@ -307,8 +316,7 @@ window.loadTrend = async function(){
     if (typeof searchContext !== 'undefined') searchContext = 'trend';
     // ストリーミングで既に描画済み。追加分のみ append
     if (typeof renderResults === 'function') {
-      const already = _streamedIds;
-      const remaining = mapped.filter(m => !already.has(m.id));
+      const remaining = mapped.filter(m => !_streamedIds.has(m.id));
       if (remaining.length) renderResults(remaining, true);
     }
     else if (grid && _streamedIds.size === 0) {
@@ -319,7 +327,10 @@ window.loadTrend = async function(){
       </div>`).join('');
     }
     if (loader) loader.classList.add('hidden');
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error(e);
+    if (loader) loader.classList.add('hidden');
+  }
   // Shortsとおすすめも継続して読み込む
   try { if (typeof fetchShortsForHome === 'function') fetchShortsForHome(); } catch(e){}
   try { if (typeof loadRecommendations === 'function') loadRecommendations(); } catch(e){}
