@@ -205,8 +205,10 @@ async function triggerSearch(query, context, append = false) {
   if (isFetching) return; isFetching = true; searchContext = context; lastQuery = query;
   if (!append) { seenVideoIds.clear(); currentPage = 1; } else { currentPage++; }
   if (context === 'channel-home' || context === 'channel-videos') {
-    const result = await fetchChannelVideos(query, currentPage);
     isFetching = false;
+    const _chTok = (typeof _openChannelToken !== 'undefined') ? _openChannelToken : 0;
+    const result = await fetchChannelVideos(query, currentPage);
+    if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
     if (result && result.videos && result.videos.length > 0) {
       let videos = result.videos.map(v => ({ id: v.videoId, title: v.title, channel: v.author || query, isShort: false, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||query)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, isLive: v.liveNow||false, isArchived: !v.liveNow && v.lengthSeconds > 0 && (v.title && (v.title.includes('ライブ')||v.title.includes('配信')||v.title.includes('LIVE'))), publishedTimestamp: v.published||0 }));
       renderResults(videos, append);
@@ -214,6 +216,7 @@ async function triggerSearch(query, context, append = false) {
       return;
     }
     const invData = await fetchFromInvidious(query, context, currentPage);
+    if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
     if (invData && invData.length > 0) {
       let videos = [];
       invData.forEach(item => {
@@ -226,12 +229,19 @@ async function triggerSearch(query, context, append = false) {
       });
       renderResults(videos, append); return;
     }
+    // 両APIとも空: ローダーを消して空状態を表示
+    document.getElementById('channel-loader')?.classList.add('hidden');
+    if (context === 'channel-home') {
+      if (typeof renderChannelHomeRow === 'function') renderChannelHomeRow([]);
+    }
     return;
   }
   if (context === 'channel-shorts') {
     const cleanName = query.replace(/\s*shorts\s*/gi,'').replace(/#/g,'').trim();
     currentChannelShortsName = cleanName; isFetching = false;
+    const _chTok = (typeof _openChannelToken !== 'undefined') ? _openChannelToken : 0;
     const { shorts, hasMore } = await fetchChannelShortsMultiPage(cleanName, currentChannelShortsPage);
+    if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
     // ユーザー要求: そのチャンネル本人が投稿したShortのみ表示する。
     // 他チャンネルが混ざる検索フォールバックは行わない。
     if (shorts.length > 0) {
@@ -253,13 +263,16 @@ async function triggerSearch(query, context, append = false) {
   }
   if (context === 'channel-live') {
     const chName = query.replace(/ ライブ$/, '').trim(); isFetching = false;
+    const _chTok = (typeof _openChannelToken !== 'undefined') ? _openChannelToken : 0;
     const { videos: liveVideos, channelInfo } = await fetchChannelLiveVideos(chName);
+    if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
     if (liveVideos && liveVideos.length > 0) {
       const mapped = liveVideos.map(v => ({ id: v.videoId, title: v.title||'', channel: v.author||chName, isShort: false, isLive: !!(v.liveNow||v.isUpcoming), isUpcoming: !!v.isUpcoming, isArchived: !v.liveNow && !v.isUpcoming, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||chName)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, publishedTimestamp: v.published||0 }));
       renderChannelLive(mapped, append);
       if (channelInfo && !append) updateChannelHeaderInfo(channelInfo);
     } else {
       const result = await fetchChannelVideos(chName, 1);
+      if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
       if (result && result.videos) {
         const liveFiltered = result.videos.filter(v => v.liveNow || v.isUpcoming || (v.title && v.title.match(/ライブ|配信|LIVE|live|生放送|STREAM/i)));
         const mapped = (liveFiltered.length > 0 ? liveFiltered : result.videos.slice(0,12)).map(v => ({ id: v.videoId, title: v.title, channel: v.author||chName, isShort: false, isLive: !!(v.liveNow||v.isUpcoming), isUpcoming: !!v.isUpcoming, isArchived: !v.liveNow && !v.isUpcoming && (v.title && !!v.title.match(/ライブ|配信|LIVE|live|生放送/i)), authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||chName)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, publishedTimestamp: v.published||0 }));
