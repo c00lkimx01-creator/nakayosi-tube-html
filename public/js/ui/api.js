@@ -92,17 +92,19 @@ async function searchChannelsFromInvidious(query, limit = 3) {
   }
   return [];
 }
-async function fetchChannelLiveVideos(channelName) {
-  let channelId = null, channelInfo = null;
-  for (let instance of INVIDIOUS_INSTANCES) {
-    try {
-      const searchUrl = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(channelName)}&type=channel&page=1`);
-      const sRes = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
-      if (!sRes.ok) continue;
-      const sData = await sRes.json();
-      const channel = _pickBestChannel(sData, channelName);
-      if (channel) { channelId = channel.authorId; channelInfo = channel; break; }
-    } catch(e) {}
+async function fetchChannelLiveVideos(channelName, knownChannelId = null) {
+  let channelId = knownChannelId || null, channelInfo = null;
+  if (!channelId) {
+    for (let instance of INVIDIOUS_INSTANCES) {
+      try {
+        const searchUrl = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(channelName)}&type=channel&page=1`);
+        const sRes = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
+        if (!sRes.ok) continue;
+        const sData = await sRes.json();
+        const channel = _pickBestChannel(sData, channelName);
+        if (channel) { channelId = channel.authorId; channelInfo = channel; break; }
+      } catch(e) {}
+    }
   }
   if (!channelId) return { videos: [], channelInfo: null };
   const allVideos = [];
@@ -118,7 +120,20 @@ async function fetchChannelLiveVideos(channelName) {
   }
   return { videos: allVideos, channelInfo };
 }
-async function fetchChannelVideos(channelName, page = 1) {
+async function fetchChannelVideos(channelName, page = 1, knownChannelId = null) {
+  // IDが既知の場合は検索スキップ、直接動画取得
+  if (knownChannelId) {
+    for (let instance of INVIDIOUS_INSTANCES) {
+      try {
+        const videosUrl = buildFetchUrl(`${instance}/api/v1/channels/${knownChannelId}/videos?page=${page}`);
+        const vRes = await fetch(videosUrl, { signal: AbortSignal.timeout(4000) });
+        if (!vRes.ok) continue;
+        const vData = await vRes.json();
+        return { videos: vData.videos || [], channelInfo: null };
+      } catch(e) {}
+    }
+    return null;
+  }
   for (let instance of INVIDIOUS_INSTANCES) {
     try {
       const searchUrl = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(channelName)}&type=channel&page=1`);
@@ -136,17 +151,19 @@ async function fetchChannelVideos(channelName, page = 1) {
   }
   return null;
 }
-async function fetchChannelShortsMultiPage(channelName, startPage = 1) {
-  let channelId = null;
-  for (let instance of INVIDIOUS_INSTANCES) {
-    try {
-      const searchUrl = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(channelName)}&type=channel&page=1`);
-      const sRes = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
-      if (!sRes.ok) continue;
-      const sData = await sRes.json();
-      const channel = _pickBestChannel(sData, channelName);
-      if (channel) { channelId = channel.authorId; break; }
-    } catch(e) {}
+async function fetchChannelShortsMultiPage(channelName, startPage = 1, knownChannelId = null) {
+  let channelId = knownChannelId || null;
+  if (!channelId) {
+    for (let instance of INVIDIOUS_INSTANCES) {
+      try {
+        const searchUrl = buildFetchUrl(`${instance}/api/v1/search?q=${encodeURIComponent(channelName)}&type=channel&page=1`);
+        const sRes = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
+        if (!sRes.ok) continue;
+        const sData = await sRes.json();
+        const channel = _pickBestChannel(sData, channelName);
+        if (channel) { channelId = channel.authorId; break; }
+      } catch(e) {}
+    }
   }
   if (!channelId) return { shorts: [], hasMore: false };
   const pagesToFetch = [startPage, startPage+1, startPage+2];
@@ -207,7 +224,8 @@ async function triggerSearch(query, context, append = false) {
   if (context === 'channel-home' || context === 'channel-videos') {
     isFetching = false;
     const _chTok = (typeof _openChannelToken !== 'undefined') ? _openChannelToken : 0;
-    const result = await fetchChannelVideos(query, currentPage);
+    const _knownId = (typeof currentChannelId !== 'undefined') ? currentChannelId : null;
+    const result = await fetchChannelVideos(query, currentPage, _knownId);
     if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
     if (result && result.videos && result.videos.length > 0) {
       let videos = result.videos.map(v => ({ id: v.videoId, title: v.title, channel: v.author || query, isShort: false, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||query)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, isLive: v.liveNow||false, isArchived: !v.liveNow && v.lengthSeconds > 0 && (v.title && (v.title.includes('ライブ')||v.title.includes('配信')||v.title.includes('LIVE'))), publishedTimestamp: v.published||0 }));
@@ -240,7 +258,8 @@ async function triggerSearch(query, context, append = false) {
     const cleanName = query.replace(/\s*shorts\s*/gi,'').replace(/#/g,'').trim();
     currentChannelShortsName = cleanName; isFetching = false;
     const _chTok = (typeof _openChannelToken !== 'undefined') ? _openChannelToken : 0;
-    const { shorts, hasMore } = await fetchChannelShortsMultiPage(cleanName, currentChannelShortsPage);
+    const _knownId = (typeof currentChannelId !== 'undefined') ? currentChannelId : null;
+    const { shorts, hasMore } = await fetchChannelShortsMultiPage(cleanName, currentChannelShortsPage, _knownId);
     if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
     // ユーザー要求: そのチャンネル本人が投稿したShortのみ表示する。
     // 他チャンネルが混ざる検索フォールバックは行わない。
@@ -264,14 +283,15 @@ async function triggerSearch(query, context, append = false) {
   if (context === 'channel-live') {
     const chName = query.replace(/ ライブ$/, '').trim(); isFetching = false;
     const _chTok = (typeof _openChannelToken !== 'undefined') ? _openChannelToken : 0;
-    const { videos: liveVideos, channelInfo } = await fetchChannelLiveVideos(chName);
+    const _knownId = (typeof currentChannelId !== 'undefined') ? currentChannelId : null;
+    const { videos: liveVideos, channelInfo } = await fetchChannelLiveVideos(chName, _knownId);
     if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
     if (liveVideos && liveVideos.length > 0) {
       const mapped = liveVideos.map(v => ({ id: v.videoId, title: v.title||'', channel: v.author||chName, isShort: false, isLive: !!(v.liveNow||v.isUpcoming), isUpcoming: !!v.isUpcoming, isArchived: !v.liveNow && !v.isUpcoming, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||chName)}`, duration: v.lengthSeconds||0, published: v.publishedText||'', viewCount: v.viewCount||0, publishedTimestamp: v.published||0 }));
       renderChannelLive(mapped, append);
       if (channelInfo && !append) updateChannelHeaderInfo(channelInfo);
     } else {
-      const result = await fetchChannelVideos(chName, 1);
+      const result = await fetchChannelVideos(chName, 1, _knownId);
       if (_chTok !== _openChannelToken) return; // 別チャンネルに移動済み
       if (result && result.videos) {
         const liveFiltered = result.videos.filter(v => v.liveNow || v.isUpcoming || (v.title && v.title.match(/ライブ|配信|LIVE|live|生放送|STREAM/i)));
@@ -334,7 +354,8 @@ async function loadMoreChannelShorts() {
   currentChannelShortsPage += 3;
   document.getElementById('channel-shorts-more-btn').style.display = 'none';
   document.getElementById('channel-shorts-loader').classList.remove('hidden');
-  const { shorts, hasMore } = await fetchChannelShortsMultiPage(currentChannelShortsName, currentChannelShortsPage);
+  const _knownId = (typeof currentChannelId !== 'undefined') ? currentChannelId : null;
+  const { shorts, hasMore } = await fetchChannelShortsMultiPage(currentChannelShortsName, currentChannelShortsPage, _knownId);
   renderChannelShorts(shorts, true);
   const moreBtn = document.getElementById('channel-shorts-more-btn');
   if (moreBtn) moreBtn.style.display = hasMore && shorts.length > 0 ? 'block' : 'none';
