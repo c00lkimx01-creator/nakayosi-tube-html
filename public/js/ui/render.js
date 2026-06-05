@@ -390,6 +390,7 @@ function openChannel(channelName, thumb = null) {
   setTimeout(() => drawFallbackBanner(canvas), 50);
   updateChannelSubscribeUI(channelName);
   currentChannelShortsPage = 1;
+  isFetching = false;
   fetchChannelInfoFromInvidious(channelName).then(info => {
     if (myToken !== _openChannelToken) return; // stale: ユーザーは別チャンネルへ移動済み
     if (!info) return;
@@ -427,12 +428,15 @@ function switchChannelTab(tab) {
     document.getElementById('channel-home-shorts-row').innerHTML = '<div style="color:var(--text-secondary);padding:12px;">読み込み中...</div>';
     document.getElementById('channel-featured-video').innerHTML = '';
     triggerSearch(name,'channel-home');
-    // Shortsはチャンネル専用APIで確実に取得
+    // Shortsはチャンネル専用APIで確実に取得（古いチャンネルの結果が上書きしないよう token チェック）
     (async () => {
+      const tok = _openChannelToken;
       try {
         const { shorts } = await fetchChannelShortsMultiPage(name, 1);
+        if (tok !== _openChannelToken) return;
         renderChannelHomeShortsRow(shorts || []);
       } catch (e) {
+        if (tok !== _openChannelToken) return;
         renderChannelHomeShortsRow([]);
       }
     })();
