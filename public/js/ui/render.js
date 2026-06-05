@@ -337,7 +337,6 @@ const _hsbObserver = new MutationObserver(() => {
   });
 });
 document.addEventListener('DOMContentLoaded', () => _hsbObserver.observe(document.body, { childList: true, subtree: true }));
-function loadTrend() { triggerSearch("人気 日本",'trend'); }
 function handleWelcomeSearch(e) {
   e.preventDefault(); const q = document.getElementById('welcome-search-input').value;
   if(!q) return; document.getElementById('search-input').value = q; saveSettings(); handleSearch(e, q);
