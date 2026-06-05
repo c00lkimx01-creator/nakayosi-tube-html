@@ -398,6 +398,18 @@ function openChannel(channelName, thumb = null) {
       currentChannelId = info.authorId;
       document.getElementById('channel-page-handle').innerText = `@${info.authorId}`;
       try { history.replaceState({ view: 'channel', channelId: info.authorId, channelName }, '', `#/@${info.authorId}`); } catch(e) {}
+      // IDが確定したのでホームタブが表示中ならコンテンツを正しいIDで再取得する
+      if (currentChannelTab === 'home') {
+        const homeGrid = document.getElementById('channel-home-grid');
+        const homeRow = document.getElementById('channel-home-row');
+        // グリッドが空 or まだ読み込み中テキストが残っている場合は再フェッチ
+        const rowIsStillLoading = homeRow && homeRow.querySelector('div') &&
+          homeRow.querySelector('div').textContent.includes('読み込み中');
+        const gridIsEmpty = homeGrid && homeGrid.children.length === 0;
+        if (gridIsEmpty || rowIsStillLoading) {
+          triggerSearch(channelName, 'channel-home');
+        }
+      }
     }
     if (info.subCount) document.getElementById('channel-page-meta').innerText = `登録者数 ${formatSubCount(info.subCount)} • 動画 ${info.videoCount||'--'}件`;
     else if (info.videoCount) document.getElementById('channel-page-meta').innerText = `動画 ${info.videoCount}件`;
