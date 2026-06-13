@@ -7360,5 +7360,740 @@ window.fetchExtraSearch = async function(query){
   setTimeout(addSidebarItems, 1500);
 })();
 </script>
+<script>
+/* ============================================================
+   Phase 1 上書きパッチ（stream最速化 / 自動再開 / 死にinstance除去）
+   - yt.omada.cafe を Invidious プール先頭に固定
+   - 既知の死んでいる instance を除去
+   - 並列取得ヘルパー window.__fastStream(videoId) を追加
+     * 360p の場合は muxed (formatStreams) を返す
+     * それ以外は adaptive の mp4(video) + m4a(audio) を同時に返す
+   - 全 <video> に対し、ユーザーが止めていないのに停止した場合
+     同じ currentTime のまま自動で再読込・再生する監視を装着
+   ============================================================ */
+(function(){
+  'use strict';
+  // ---- 既知の死にinstance（応答無 / 証明書エラー / ストリーム不可） ----
+  var DEAD = new Set([
+    'https://invidious.privacyredirect.com',
+    'https://invidious.perennialte.ch',
+    'https://y.com.sb',
+    'https://pipedapi.darkness.services',
+    'https://pipedapi.r4fo.com'
+  ]);
+  function pruneAndPrioritize(listName, top){
+    try{
+      var arr = window[listName];
+      if (!Array.isArray(arr)) return;
+      var seen = new Set();
+      var out = [];
+      (top||[]).forEach(function(u){ if(!seen.has(u)){ seen.add(u); out.push(u);} });
+      arr.forEach(function(u){
+        if (!u || seen.has(u) || DEAD.has(u)) return;
+        seen.add(u); out.push(u);
+      });
+      window[listName] = out;
+    }catch(_){}
+  }
+  pruneAndPrioritize('INVIDIOUS_INSTANCES', [
+    'https://yt.omada.cafe',
+    'https://invidious.f5.si',
+    'https://inv.nadeko.net',
+    'https://iv.melmac.space',
+    'https://invidious.nerdvpn.de'
+  ]);
+  pruneAndPrioritize('PIPED_INSTANCES', [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi-libre.kavin.rocks',
+    'https://pipedapi.adminforge.de'
+  ]);
+
+  // ---- 並列 stream 取得ヘルパー ----
+  var FAST_INV = [
+    'https://yt.omada.cafe',
+    'https://invidious.f5.si',
+    'https://inv.nadeko.net',
+    'https://iv.melmac.space'
+  ];
+  function pickFormats(formats, wantHeight){
+    var muxed = formats.filter(function(f){
+      return f && f.url && (f.container==='mp4'||/mp4/i.test(f.type||'')) &&
+             f.encoding!=='av1' &&
+             (f.resolution||'').toString().indexOf('360')===0 &&
+             (f.audioChannels || /audio/.test(f.type||'')===false && f.itag==='18');
+    });
+    if (wantHeight===360 && muxed.length) {
+      return { kind:'muxed', video: muxed[0].url };
+    }
+    // adaptive 分離
+    var vids = formats.filter(function(f){
+      return f && f.url && /video\/mp4/i.test(f.type||'') && (f.qualityLabel||f.resolution);
+    }).sort(function(a,b){
+      var ha = parseInt((a.qualityLabel||a.resolution||'0'),10)||0;
+      var hb = parseInt((b.qualityLabel||b.resolution||'0'),10)||0;
+      return Math.abs(ha-wantHeight) - Math.abs(hb-wantHeight);
+    });
+    var auds = formats.filter(function(f){
+      return f && f.url && /audio\/mp4/i.test(f.type||'');
+    }).sort(function(a,b){ return (b.bitrate||0)-(a.bitrate||0); });
+    if (vids[0] && auds[0]) return { kind:'split', video: vids[0].url, audio: auds[0].url };
+    if (vids[0]) return { kind:'muxed', video: vids[0].url };
+    return null;
+  }
+  window.__fastStream = function(videoId, wantHeight){
+    wantHeight = wantHeight || 720;
+    var ctrl = new AbortController();
+    var sig = ctrl.signal;
+    var attempts = FAST_INV.map(function(inst){
+      var url = inst+'/api/v1/videos/'+encodeURIComponent(videoId)+'?fields=adaptiveFormats,formatStreams';
+      return fetch(url, {signal: sig, cache:'no-store'}).then(function(r){
+        if (!r.ok) throw 0;
+        return r.json();
+      }).then(function(d){
+        var fmts = [].concat(d.adaptiveFormats||[], d.formatStreams||[]);
+        var picked = pickFormats(fmts, wantHeight);
+        if (!picked) throw 0;
+        picked.instance = inst;
+        return picked;
+      });
+    });
+    return new Promise(function(resolve, reject){
+      var rej = 0;
+      attempts.forEach(function(p){
+        p.then(function(v){ ctrl.abort(); resolve(v); })
+         .catch(function(){ if(++rej===attempts.length) reject(new Error('all failed')); });
+      });
+    });
+  };
+
+  // ---- 動画停止の自動復帰監視 ----
+  // ユーザーが押した pause は対象外。ネットワーク起因の停止のみ復帰。
+  function attachAutoResume(video){
+    if (!video || video.__autoResumeBound) return;
+    video.__autoResumeBound = true;
+    var userPaused = false;
+    video.addEventListener('pause', function(e){
+      // isTrusted は UI 操作起因のみ true。プログラム pause は false
+      if (e && e.isTrusted) userPaused = true;
+    });
+    video.addEventListener('play', function(){ userPaused = false; });
+    function resumeAt(t){
+      try {
+        var src = video.currentSrc || video.src;
+        if (!src) return;
+        var time = (typeof t === 'number' && isFinite(t)) ? t : video.currentTime || 0;
+        // 同じ src のまま再読込し、その秒数から再生
+        video.pause();
+        video.load();
+        var onMeta = function(){
+          video.removeEventListener('loadedmetadata', onMeta);
+          try { video.currentTime = time; } catch(_){}
+          var p = video.play();
+          if (p && p.catch) p.catch(function(){});
+        };
+        video.addEventListener('loadedmetadata', onMeta);
+      } catch(_){}
+    }
+    var stallTimer = null;
+    function armStall(){
+      if (stallTimer) return;
+      stallTimer = setTimeout(function(){
+        stallTimer = null;
+        if (!userPaused && video.paused && !video.ended && video.readyState < 3) {
+          resumeAt(video.currentTime);
+        }
+      }, 3500);
+    }
+    function disarmStall(){
+      if (stallTimer){ clearTimeout(stallTimer); stallTimer = null; }
+    }
+    video.addEventListener('waiting', armStall);
+    video.addEventListener('stalled', armStall);
+    video.addEventListener('error', function(){
+      if (!userPaused) resumeAt(video.currentTime);
+    });
+    video.addEventListener('playing', disarmStall);
+    video.addEventListener('pause', function(e){
+      if (e && e.isTrusted) { disarmStall(); return; }
+      if (!video.ended) armStall();
+    });
+  }
+  function scanVideos(root){
+    try {
+      (root||document).querySelectorAll('video').forEach(attachAutoResume);
+    } catch(_){}
+  }
+  if (document.readyState !== 'loading') scanVideos();
+  else document.addEventListener('DOMContentLoaded', function(){ scanVideos(); });
+  // 動的追加された <video> も拾う
+  try {
+    new MutationObserver(function(muts){
+      muts.forEach(function(m){
+        m.addedNodes && m.addedNodes.forEach(function(n){
+          if (n.nodeType !== 1) return;
+          if (n.tagName === 'VIDEO') attachAutoResume(n);
+          else if (n.querySelectorAll) scanVideos(n);
+        });
+      });
+    }).observe(document.documentElement, {childList:true, subtree:true});
+  } catch(_){}
+})();
+</script>
+<script>
+/* ============================================================
+   v2 機能拡張パッチ
+   - /#/plus-home, /#/gust 削除
+   - 後で見る (Watch Later)
+   - キーボードショートカット (stream / edu / nocookie)
+   - コメントを「新しい順 / 話題順」切替
+   - サイドバーアイコンを常にアウトライン表示
+   - 設定をサイドスライドパネル化
+   - 初回オンボーディングUI刷新
+   - 急上昇 動作復旧
+   - ホーム動画読み込みを yt.omada.cafe 起点で再構築
+   ============================================================ */
+(function(){
+  'use strict';
+
+  /* ---------- 1) /#/plus-home, /#/gust ルート無効化 ---------- */
+  function killSpecialRoutes(){
+    if (location.hash === '#/plus-home' || location.hash === '#/gust') {
+      try { history.replaceState(null,'','#/'); } catch(_){ location.hash = '#/'; }
+    }
+    try {
+      var ph = document.getElementById('view-plus-home');
+      var gu = document.getElementById('view-gust');
+      if (ph) ph.remove();
+      if (gu) gu.remove();
+      document.body.classList.remove('chrome-hidden');
+      var hdr=document.querySelector('header'), sb=document.getElementById('sidebar'),
+          mc=document.getElementById('main-content'), cats=document.getElementById('categories-bar');
+      [hdr,sb,mc,cats].forEach(function(el){ if(el) el.style.display=''; });
+      // sidebar からも該当項目を除去
+      document.querySelectorAll('.sidebar-item').forEach(function(it){
+        var t = (it.textContent||'').trim();
+        var oc = (it.getAttribute('onclick')||'') + ' ' + (it.dataset.view||'');
+        if (/plus-home|gust/i.test(oc) || t==='Plus Home' || t==='GUST') it.remove();
+      });
+    } catch(_){}
+  }
+  window.addEventListener('hashchange', function(){
+    if (location.hash==='#/plus-home'||location.hash==='#/gust'){
+      history.replaceState(null,'','#/');
+      if (typeof window.navigate==='function') try { window.navigate('home'); } catch(_){}
+    }
+  });
+  document.addEventListener('DOMContentLoaded', killSpecialRoutes);
+  setTimeout(killSpecialRoutes, 800);
+  setTimeout(killSpecialRoutes, 2500);
+
+  /* ---------- 2) サイドバーアイコンを常に「中身塗りつぶしなし」に ---------- */
+  var iconStyle = document.createElement('style');
+  iconStyle.textContent = ''
+    + '.sidebar-item svg, .sidebar-item.active svg{fill:none !important;stroke:currentColor !important;stroke-width:1.8 !important;stroke-linecap:round !important;stroke-linejoin:round !important;}'
+    + '.sidebar-item.active{background-color:var(--active-sidebar-bg);color:var(--text-color);font-weight:700;}'
+    + '.logo svg{fill:var(--primary-color) !important;stroke:none !important;}'
+    + '.header-left .icon-btn svg, .header-right .icon-btn svg{fill:currentColor !important;stroke:none !important;}';
+  document.head.appendChild(iconStyle);
+
+  /* ---------- 3) 後で見る (Watch Later) ---------- */
+  var WL_KEY = '__watch_later_v1';
+  function wlGet(){ try { return JSON.parse(localStorage.getItem(WL_KEY)||'[]'); } catch(_){ return []; } }
+  function wlSet(a){ try { localStorage.setItem(WL_KEY, JSON.stringify(a.slice(0,500))); } catch(_){} }
+  window.watchLater = {
+    list: wlGet,
+    has: function(id){ return wlGet().some(function(v){return v.videoId===id;}); },
+    add: function(v){
+      if (!v || !v.videoId) return;
+      var arr = wlGet().filter(function(x){return x.videoId!==v.videoId;});
+      arr.unshift({videoId:v.videoId, title:v.title||'', author:v.author||'', authorId:v.authorId||'',
+                   thumb:v.thumb||('https://i.ytimg.com/vi/'+v.videoId+'/mqdefault.jpg'),
+                   lengthSeconds:v.lengthSeconds||0, addedAt:Date.now()});
+      wlSet(arr); renderWatchLater();
+    },
+    remove: function(id){ wlSet(wlGet().filter(function(v){return v.videoId!==id;})); renderWatchLater(); },
+    toggle: function(v){ if (this.has(v.videoId)) this.remove(v.videoId); else this.add(v); }
+  };
+  function ensureWatchLaterView(){
+    if (document.getElementById('view-watch-later')) return;
+    var main = document.getElementById('main-content') || document.querySelector('main');
+    if (!main) return;
+    var v = document.createElement('div');
+    v.id = 'view-watch-later'; v.className = 'view';
+    v.innerHTML = '<h2 style="margin-bottom:20px;display:flex;align-items:center;gap:10px;">'
+      + '<svg viewBox="0 0 24 24" style="width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+      + '後で見る <span id="wl-count" style="font-size:14px;color:var(--text-secondary);font-weight:normal;"></span>'
+      + '<button onclick="if(confirm(\'全件削除しますか？\')){localStorage.removeItem(\'__watch_later_v1\');renderWatchLater();}" '
+      + 'style="margin-left:auto;padding:6px 14px;border-radius:18px;background:var(--chip-bg);border:1px solid var(--border-color);color:var(--text-color);font-size:13px;">全て削除</button></h2>'
+      + '<div id="wl-grid" class="video-grid"></div>'
+      + '<div id="wl-empty" style="display:none;text-align:center;padding:64px 16px;color:var(--text-secondary);">後で見る動画はまだありません。動画カードの「+」ボタンから追加できます。</div>';
+    main.appendChild(v);
+  }
+  window.renderWatchLater = function(){
+    ensureWatchLaterView();
+    var g = document.getElementById('wl-grid'), e = document.getElementById('wl-empty'), c = document.getElementById('wl-count');
+    if (!g) return;
+    var arr = wlGet();
+    if (c) c.textContent = arr.length ? '('+arr.length+')' : '';
+    if (!arr.length){ g.innerHTML=''; if(e) e.style.display=''; return; }
+    if (e) e.style.display='none';
+    g.innerHTML = arr.map(function(v){
+      var dur = v.lengthSeconds>0 ? (function(s){var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':':'')+(h?String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');})(v.lengthSeconds) : '';
+      return '<div class="video-card" data-wl-open="'+v.videoId+'">'
+        + '<div class="thumbnail-container"><img loading="lazy" src="'+v.thumb+'" alt="">'
+        + (dur?'<div class="duration-badge">'+dur+'</div>':'')
+        + '<button title="削除" data-wl-del="'+v.videoId+'" '
+        + 'style="position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:18px;line-height:1;">×</button></div>'
+        + '<div class="video-info"><div class="video-details">'
+        + '<div class="video-title">'+(v.title||'(タイトル不明)')+'</div>'
+        + '<div class="video-meta-channel">'+(v.author||'')+'</div></div></div></div>';
+    }).join('');
+  };
+  // wl grid 委譲
+  document.addEventListener('click', function(e){
+    var del = e.target.closest('[data-wl-del]');
+    if (del){ e.stopPropagation(); watchLater.remove(del.getAttribute('data-wl-del')); return; }
+    var op = e.target.closest('[data-wl-open]');
+    if (op){
+      var vid = op.getAttribute('data-wl-open');
+      if (typeof window.openVideo==='function') window.openVideo(vid);
+      else location.hash = '#/watch?v='+vid;
+    }
+  });
+  // sidebar に「後で見る」項目を挿入
+  function addWatchLaterSidebar(){
+    var sb = document.getElementById('sidebar'); if (!sb || sb.__wlAdded) return;
+    var item = document.createElement('div');
+    item.className = 'sidebar-item'; item.dataset.view='watch-later';
+    item.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M19 5l2-2M5 5L3 3"/></svg><span class="label">後で見る</span>';
+    item.addEventListener('click', function(){
+      document.querySelectorAll('.view').forEach(function(v){v.classList.remove('active');});
+      ensureWatchLaterView();
+      var v = document.getElementById('view-watch-later'); if (v) v.classList.add('active');
+      document.querySelectorAll('.sidebar-item').forEach(function(i){i.classList.remove('active');});
+      item.classList.add('active');
+      renderWatchLater();
+      window.scrollTo(0,0);
+    });
+    // 履歴の近くに挿入
+    var hist = Array.from(sb.querySelectorAll('.sidebar-item')).find(function(i){
+      return /履歴|history/i.test(i.textContent);
+    });
+    if (hist && hist.parentNode===sb) sb.insertBefore(item, hist.nextSibling);
+    else sb.appendChild(item);
+    sb.__wlAdded = true;
+  }
+  document.addEventListener('DOMContentLoaded', addWatchLaterSidebar);
+  setTimeout(addWatchLaterSidebar, 1000);
+  setTimeout(addWatchLaterSidebar, 2500);
+
+  // 動画ページに「後で見る」ボタンを差し込む
+  function injectWatchLaterBtnOnWatch(){
+    var area = document.querySelector('#view-watch .video-actions, #view-watch .actions-row, #view-watch') || document.getElementById('view-watch');
+    if (!area || area.__wlBtn) return;
+    var id = (location.hash.match(/[?&]v=([\w-]{6,})/)||[])[1] || window.currentVideoId;
+    if (!id) return;
+    var btn = document.createElement('button');
+    btn.id = '__wl_btn';
+    btn.style.cssText = 'margin:8px;padding:8px 16px;border-radius:18px;background:var(--chip-bg);color:var(--text-color);border:1px solid var(--border-color);display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;';
+    var refresh = function(){
+      var has = watchLater.has(id);
+      btn.innerHTML = (has?'✓ ':'+ ') + '後で見る';
+      btn.style.background = has ? 'var(--text-color)' : 'var(--chip-bg)';
+      btn.style.color = has ? 'var(--bg-color)' : 'var(--text-color)';
+    };
+    btn.onclick = function(){
+      var title = (document.querySelector('#view-watch h1, #api-title')||{}).textContent||'';
+      var author = (document.querySelector('#api-author, .channel-name')||{}).textContent||'';
+      watchLater.toggle({videoId:id, title:title.trim(), author:author.trim()});
+      refresh();
+    };
+    refresh();
+    var title = area.querySelector('h1, .video-title-watch');
+    if (title && title.parentNode) title.parentNode.insertBefore(btn, title.nextSibling);
+    else area.prepend(btn);
+    area.__wlBtn = true;
+  }
+  setInterval(function(){
+    if (document.getElementById('view-watch') && document.getElementById('view-watch').classList.contains('active')) {
+      injectWatchLaterBtnOnWatch();
+    }
+  }, 1200);
+
+  /* ---------- 4) コメント並び替え (新しい順 / 話題順) ---------- */
+  window.__commentSort = 'top'; // 'top' | 'new'
+  function injectCommentSortUI(){
+    var cs = document.querySelector('.comments-section'); if (!cs || cs.__sortAdded) return;
+    var head = cs.firstElementChild; if (!head) return;
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'display:inline-flex;gap:6px;margin-left:8px;';
+    wrap.innerHTML = ''
+      + '<button data-sort="top" style="padding:4px 12px;border-radius:14px;border:1px solid var(--border-color);background:var(--text-color);color:var(--bg-color);font-size:12px;">話題順</button>'
+      + '<button data-sort="new" style="padding:4px 12px;border-radius:14px;border:1px solid var(--border-color);background:var(--chip-bg);color:var(--text-color);font-size:12px;">新しい順</button>';
+    head.appendChild(wrap);
+    wrap.addEventListener('click', function(e){
+      var b = e.target.closest('button[data-sort]'); if (!b) return;
+      window.__commentSort = b.dataset.sort;
+      wrap.querySelectorAll('button').forEach(function(x){
+        var a = x.dataset.sort===window.__commentSort;
+        x.style.background = a?'var(--text-color)':'var(--chip-bg)';
+        x.style.color = a?'var(--bg-color)':'var(--text-color)';
+      });
+      if (typeof window.fetchComments==='function' && window.currentVideoId) {
+        try { window.fetchComments(window.currentVideoId, window.__commentSort); } catch(_){
+          try { window.fetchComments(window.currentVideoId); } catch(__){}
+        }
+      }
+    });
+    cs.__sortAdded = true;
+  }
+  // 既存 fetchComments を sort パラメータ対応にラップ
+  var _waitFC = setInterval(function(){
+    if (typeof window.fetchComments==='function' && !window.fetchComments.__wrapped) {
+      var orig = window.fetchComments;
+      window.fetchComments = function(vid, sort){
+        var s = sort || window.__commentSort || 'top';
+        // Invidious は ?sort_by=top|new
+        var prev = window.fetch;
+        var unhook = function(){ window.fetch = prev; };
+        window.fetch = function(u, o){
+          try {
+            if (typeof u==='string' && /\/api\/v1\/comments\//.test(u)) {
+              u = u.replace(/([?&])sort_by=[^&]*/,'$1').replace(/[?&]$/,'');
+              u += (u.indexOf('?')>=0?'&':'?') + 'sort_by=' + (s==='new'?'new':'top');
+            }
+          } catch(_){}
+          var p = prev.apply(this, [u,o]);
+          // 1回限り
+          setTimeout(unhook, 50);
+          return p;
+        };
+        return orig.apply(this, [vid]);
+      };
+      window.fetchComments.__wrapped = true;
+      clearInterval(_waitFC);
+    }
+  }, 500);
+  setInterval(injectCommentSortUI, 1200);
+
+  /* ---------- 5) キーボードショートカット (stream / edu / nocookie) ---------- */
+  function activeVideo(){
+    var sel = ['#stream-player video','#edu-player video','#nocookie-player video','#view-watch video','video'];
+    for (var i=0;i<sel.length;i++){ var v = document.querySelector(sel[i]); if (v) return v; }
+    return null;
+  }
+  document.addEventListener('keydown', function(e){
+    var t = e.target;
+    if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    if (t && t.isContentEditable) return;
+    var v = activeVideo(); if (!v) return;
+    var k = e.key.toLowerCase();
+    if (k===' ' || k==='k'){ e.preventDefault(); v.paused?v.play():v.pause(); }
+    else if (k==='f'){ e.preventDefault(); if (document.fullscreenElement) document.exitFullscreen(); else v.requestFullscreen&&v.requestFullscreen(); }
+    else if (k==='m'){ e.preventDefault(); v.muted = !v.muted; }
+    else if (k==='j'){ e.preventDefault(); v.currentTime = Math.max(0, v.currentTime-10); }
+    else if (k==='l'){ e.preventDefault(); v.currentTime = Math.min(v.duration||1e9, v.currentTime+10); }
+    else if (k==='arrowleft'){ e.preventDefault(); v.currentTime = Math.max(0, v.currentTime-5); }
+    else if (k==='arrowright'){ e.preventDefault(); v.currentTime = Math.min(v.duration||1e9, v.currentTime+5); }
+    else if (k==='arrowup'){ e.preventDefault(); v.volume = Math.min(1, v.volume+0.05); }
+    else if (k==='arrowdown'){ e.preventDefault(); v.volume = Math.max(0, v.volume-0.05); }
+    else if (k>='0' && k<='9'){ e.preventDefault(); v.currentTime = (parseInt(k,10)/10)*(v.duration||0); }
+    else if (k==='c'){ e.preventDefault(); var tracks=v.textTracks; for(var i=0;i<tracks.length;i++){ tracks[i].mode = tracks[i].mode==='showing'?'hidden':'showing'; } }
+  }, true);
+
+  /* ---------- 6) 設定をサイドスライドパネル化 ---------- */
+  var settingsCss = document.createElement('style');
+  settingsCss.textContent = ''
+    + '#__settings_panel{position:fixed;top:0;right:-440px;width:420px;max-width:92vw;height:100vh;background:var(--bg-color);color:var(--text-color);border-left:1px solid var(--border-color);box-shadow:-12px 0 40px rgba(0,0,0,.25);z-index:9999;transition:right .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;}'
+    + '#__settings_panel.open{right:0;}'
+    + '#__settings_backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9998;opacity:0;pointer-events:none;transition:opacity .25s;}'
+    + '#__settings_backdrop.open{opacity:1;pointer-events:auto;}'
+    + '#__settings_panel .sp-head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border-color);}'
+    + '#__settings_panel .sp-head h3{flex:1;font-size:18px;margin:0;}'
+    + '#__settings_panel .sp-body{flex:1;overflow-y:auto;padding:16px 20px;}'
+    + '#__settings_panel .sp-close{width:36px;height:36px;border-radius:50%;background:var(--chip-bg);}';
+  document.head.appendChild(settingsCss);
+  function ensureSettingsPanel(){
+    if (document.getElementById('__settings_panel')) return;
+    var bd = document.createElement('div'); bd.id='__settings_backdrop';
+    bd.onclick = closeSettingsPanel;
+    var p = document.createElement('div'); p.id='__settings_panel';
+    p.innerHTML = '<div class="sp-head"><h3>設定</h3><button class="sp-close" onclick="window.__closeSettings()">×</button></div><div class="sp-body" id="__settings_body"></div>';
+    document.body.appendChild(bd); document.body.appendChild(p);
+  }
+  window.__openSettings = function(){
+    ensureSettingsPanel();
+    var body = document.getElementById('__settings_body');
+    // 既存の設定UIを panel 内に移植 (一度だけ)
+    var src = document.querySelector('#view-settings .settings-panel') || document.getElementById('view-settings');
+    if (src && body && !body.firstChild) {
+      // クローン投入 (元 DOM は壊さない)
+      var clone = src.cloneNode(true);
+      clone.style.display = 'block';
+      body.appendChild(clone);
+    }
+    document.getElementById('__settings_panel').classList.add('open');
+    document.getElementById('__settings_backdrop').classList.add('open');
+  };
+  window.__closeSettings = function(){
+    var p = document.getElementById('__settings_panel'); if (p) p.classList.remove('open');
+    var b = document.getElementById('__settings_backdrop'); if (b) b.classList.remove('open');
+  };
+  function closeSettingsPanel(){ window.__closeSettings(); }
+  // navigate('settings') を panel に差し替え
+  var _waitNav = setInterval(function(){
+    if (typeof window.navigate==='function' && !window.navigate.__settingsWrapped) {
+      var on = window.navigate;
+      window.navigate = function(v){
+        if (v==='settings'){ window.__openSettings(); return; }
+        return on.apply(this, arguments);
+      };
+      window.navigate.__settingsWrapped = true;
+      clearInterval(_waitNav);
+    }
+  }, 400);
+  // サイドバーの「設定」クリックも横取り
+  document.addEventListener('click', function(e){
+    var it = e.target.closest('.sidebar-item, .icon-btn, button, a');
+    if (!it) return;
+    var label = (it.textContent||'').trim();
+    var oc = (it.getAttribute('onclick')||'') + ' ' + (it.dataset.view||'');
+    if (label==='設定' || /['"]settings['"]|view-settings/.test(oc)) {
+      e.preventDefault(); e.stopPropagation();
+      window.__openSettings();
+    }
+  }, true);
+
+  /* ---------- 7) 初回オンボーディングUI ---------- */
+  var ONB_KEY = '__onb_v2_done';
+  function showOnboarding(){
+    if (localStorage.getItem(ONB_KEY)==='1') return;
+    if (document.getElementById('__onb')) return;
+    var wrap = document.createElement('div');
+    wrap.id = '__onb';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);';
+    wrap.innerHTML = ''
+      + '<div style="background:var(--bg-color);color:var(--text-color);border-radius:20px;max-width:480px;width:100%;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.4);">'
+      + '<div style="text-align:center;margin-bottom:20px;"><div style="width:60px;height:60px;border-radius:50%;background:var(--primary-color);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;">▶</div>'
+      + '<h2 style="font-size:22px;margin:0 0 6px;">仲良しTube+ へようこそ</h2>'
+      + '<p style="color:var(--text-secondary);font-size:13px;margin:0;">最初に簡単な設定をしましょう</p></div>'
+      + '<div style="display:flex;flex-direction:column;gap:14px;margin:24px 0;">'
+      + '<label style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border-color);border-radius:12px;cursor:pointer;">'
+      + '<span><b>ダークテーマ</b><br><span style="color:var(--text-secondary);font-size:12px;">目に優しい黒基調</span></span>'
+      + '<input type="checkbox" id="__onb_dark" checked style="width:20px;height:20px;"></label>'
+      + '<label style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border-color);border-radius:12px;cursor:pointer;">'
+      + '<span><b>自動再生</b><br><span style="color:var(--text-secondary);font-size:12px;">動画を開いたら自動再生</span></span>'
+      + '<input type="checkbox" id="__onb_auto" checked style="width:20px;height:20px;"></label>'
+      + '<label style="display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border-color);border-radius:12px;cursor:pointer;">'
+      + '<span><b>高画質優先</b><br><span style="color:var(--text-secondary);font-size:12px;">720p 以上を優先</span></span>'
+      + '<input type="checkbox" id="__onb_hq" checked style="width:20px;height:20px;"></label>'
+      + '</div>'
+      + '<button id="__onb_done" style="width:100%;padding:14px;border-radius:12px;background:var(--primary-color);color:#fff;font-size:16px;font-weight:600;border:none;cursor:pointer;">はじめる</button>'
+      + '<button id="__onb_skip" style="width:100%;padding:8px;margin-top:8px;background:transparent;color:var(--text-secondary);font-size:12px;">あとで設定する</button>'
+      + '</div>';
+    document.body.appendChild(wrap);
+    document.getElementById('__onb_done').onclick = function(){
+      try {
+        var d = document.getElementById('__onb_dark').checked;
+        document.documentElement.setAttribute('data-theme', d?'dark':'light');
+        localStorage.setItem('theme', d?'dark':'light');
+        localStorage.setItem('autoplay', document.getElementById('__onb_auto').checked?'1':'0');
+        localStorage.setItem('preferHQ', document.getElementById('__onb_hq').checked?'1':'0');
+      } catch(_){}
+      localStorage.setItem(ONB_KEY,'1');
+      wrap.remove();
+    };
+    document.getElementById('__onb_skip').onclick = function(){
+      localStorage.setItem(ONB_KEY,'1');
+      wrap.remove();
+    };
+  }
+  // 既存の setup-modal を消してから新オンボーディングを出す
+  setTimeout(function(){
+    ['setup-modal','first-time-modal','onboarding-modal','initial-setup'].forEach(function(id){
+      var e = document.getElementById(id); if (e) e.remove();
+    });
+    document.querySelectorAll('.setup-modal,.first-time-modal,.onboarding-modal').forEach(function(e){e.remove();});
+    showOnboarding();
+  }, 1500);
+
+  /* ---------- 8) 急上昇 (Trending) 動作復旧 ---------- */
+  function ensureTrendingFetch(){
+    if (window.__trendingFetch) return;
+    window.__trendingFetch = function(region){
+      region = region || 'JP';
+      var bases = ['https://yt.omada.cafe','https://invidious.f5.si','https://inv.nadeko.net','https://iv.melmac.space'];
+      var attempts = bases.map(function(b){
+        return fetch(b+'/api/v1/trending?region='+region, {cache:'no-store'})
+          .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+          .then(function(d){ if(!Array.isArray(d)||!d.length) throw 0; return {instance:b, items:d}; });
+      });
+      return new Promise(function(res,rej){
+        var n=0; attempts.forEach(function(p){
+          p.then(res).catch(function(){ if(++n===attempts.length) rej(new Error('trending failed')); });
+        });
+      });
+    };
+  }
+  function renderTrending(items){
+    var view = document.getElementById('view-trending') || (function(){
+      var main = document.getElementById('main-content')||document.querySelector('main'); if (!main) return null;
+      var v = document.createElement('div'); v.id='view-trending'; v.className='view';
+      v.innerHTML = '<h2 style="margin-bottom:20px;">急上昇</h2><div id="__trending_grid" class="video-grid"></div>';
+      main.appendChild(v); return v;
+    })();
+    if (!view) return;
+    var grid = view.querySelector('#__trending_grid') || view.querySelector('.video-grid');
+    if (!grid){ grid=document.createElement('div'); grid.className='video-grid'; grid.id='__trending_grid'; view.appendChild(grid); }
+    grid.innerHTML = items.slice(0,60).map(function(v){
+      var id = v.videoId; if (!id) return '';
+      var thumb = (v.videoThumbnails&&v.videoThumbnails[0]&&v.videoThumbnails[0].url) || ('https://i.ytimg.com/vi/'+id+'/mqdefault.jpg');
+      var dur = v.lengthSeconds>0 ? (function(s){var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':':'')+(h?String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');})(v.lengthSeconds) : '';
+      return '<div class="video-card" data-wl-open="'+id+'">'
+        + '<div class="thumbnail-container"><img loading="lazy" src="'+thumb+'" alt="">'
+        + (dur?'<div class="duration-badge">'+dur+'</div>':'') + '</div>'
+        + '<div class="video-info"><div class="video-details">'
+        + '<div class="video-title">'+(v.title||'')+'</div>'
+        + '<div class="video-meta-channel">'+(v.author||'')+'</div>'
+        + '<div class="video-meta">'+((v.viewCount||0).toLocaleString())+' 回視聴</div>'
+        + '</div></div></div>';
+    }).join('');
+    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+    view.classList.add('active');
+    window.scrollTo(0,0);
+  }
+  window.__openTrending = function(){
+    ensureTrendingFetch();
+    var view = document.getElementById('view-trending');
+    if (!view) { renderTrending([]); view = document.getElementById('view-trending'); }
+    var grid = view.querySelector('.video-grid'); if (grid) grid.innerHTML = '<div style="padding:40px;color:var(--text-secondary);">読み込み中...</div>';
+    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
+    view.classList.add('active');
+    window.__trendingFetch('JP').then(function(r){ renderTrending(r.items); })
+      .catch(function(){ if (grid) grid.innerHTML='<div style="padding:40px;color:var(--text-secondary);">急上昇の取得に失敗しました</div>'; });
+  };
+  // 急上昇ボタン横取り
+  document.addEventListener('click', function(e){
+    var it = e.target.closest('.sidebar-item, button, a');
+    if (!it) return;
+    var label = (it.textContent||'').trim();
+    var oc = (it.getAttribute('onclick')||'') + ' ' + (it.dataset.view||'');
+    if (label==='急上昇' || /trending/i.test(oc)) {
+      e.preventDefault(); e.stopPropagation();
+      window.__openTrending();
+    }
+  }, true);
+
+  /* ---------- 9) ホーム動画読み込みを yt.omada.cafe 起点で再構築 ---------- */
+  window.__loadHomeFast = function(){
+    var grid = document.querySelector('#view-home .video-grid, #home-grid, #home-row-videos .video-grid');
+    if (!grid) return;
+    grid.innerHTML = '<div style="padding:40px;color:var(--text-secondary);">読み込み中...</div>';
+    ensureTrendingFetch();
+    window.__trendingFetch('JP').then(function(r){
+      renderTrending(r.items);
+      // home grid にも同じ内容を流し込む
+      var tgrid = document.querySelector('#view-trending .video-grid');
+      if (tgrid && grid) grid.innerHTML = tgrid.innerHTML;
+    }).catch(function(){
+      grid.innerHTML = '<div style="padding:40px;color:var(--text-secondary);">読み込みに失敗しました</div>';
+    });
+  };
+  // ホームを開いた時に1回だけ高速ロード
+  var _homeLoaded = false;
+  setInterval(function(){
+    var v = document.getElementById('view-home');
+    if (v && v.classList.contains('active') && !_homeLoaded) {
+      var g = v.querySelector('.video-grid');
+      if (g && (!g.children.length || g.children[0].tagName==='DIV' && /失敗|読み込み/.test(g.textContent||''))) {
+        _homeLoaded = true;
+        try { window.__loadHomeFast(); } catch(_){}
+      }
+    }
+  }, 1500);
+
+  /* ---------- 10) Short にコメントセクションを追加 ---------- */
+  var shortCss = document.createElement('style');
+  shortCss.textContent = ''
+    + '.__short-cmt-btn{position:absolute;right:14px;bottom:120px;width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;z-index:5;cursor:pointer;}'
+    + '.__short-cmt-panel{position:fixed;right:0;top:0;bottom:0;width:380px;max-width:92vw;background:var(--bg-color);color:var(--text-color);border-left:1px solid var(--border-color);transform:translateX(110%);transition:transform .25s;z-index:9999;display:flex;flex-direction:column;}'
+    + '.__short-cmt-panel.open{transform:translateX(0);}'
+    + '.__short-cmt-panel header{padding:14px 18px;border-bottom:1px solid var(--border-color);display:flex;gap:8px;align-items:center;}'
+    + '.__short-cmt-panel .body{flex:1;overflow-y:auto;padding:12px 16px;}'
+    + '.__short-cmt-item{padding:10px 0;border-bottom:1px solid var(--border-color);font-size:13px;}'
+    + '.__short-cmt-item .a{font-weight:600;color:var(--text-secondary);font-size:12px;}';
+  document.head.appendChild(shortCss);
+  function ensureShortCommentsPanel(){
+    if (document.getElementById('__short_cmt')) return;
+    var p = document.createElement('div'); p.id='__short_cmt'; p.className='__short-cmt-panel';
+    p.innerHTML = '<header><b style="flex:1;">コメント</b>'
+      + '<button data-sort="top" class="__scs" style="padding:4px 10px;border-radius:12px;border:1px solid var(--border-color);background:var(--text-color);color:var(--bg-color);font-size:11px;">話題順</button>'
+      + '<button data-sort="new" class="__scs" style="padding:4px 10px;border-radius:12px;border:1px solid var(--border-color);background:var(--chip-bg);color:var(--text-color);font-size:11px;">新しい順</button>'
+      + '<button data-short-cmt-close style="width:32px;height:32px;border-radius:50%;background:var(--chip-bg);margin-left:6px;">×</button></header>'
+      + '<div class="body" id="__short_cmt_body"><div style="padding:24px;color:var(--text-secondary);">コメントなし</div></div>';
+    document.body.appendChild(p);
+    p.querySelector('[data-short-cmt-close]').onclick = function(){ p.classList.remove('open'); };
+    p.querySelectorAll('.__scs').forEach(function(b){
+      b.onclick = function(){
+        p.querySelectorAll('.__scs').forEach(function(x){
+          var a = x.dataset.sort===b.dataset.sort;
+          x.style.background = a?'var(--text-color)':'var(--chip-bg)';
+          x.style.color = a?'var(--bg-color)':'var(--text-color)';
+        });
+        loadShortComments(p.dataset.vid, b.dataset.sort);
+      };
+    });
+  }
+  function loadShortComments(vid, sort){
+    if (!vid) return;
+    var body = document.getElementById('__short_cmt_body');
+    body.innerHTML = '<div style="padding:24px;color:var(--text-secondary);">読み込み中...</div>';
+    var bases = ['https://yt.omada.cafe','https://invidious.f5.si','https://inv.nadeko.net'];
+    var s = sort==='new'?'new':'top';
+    var attempts = bases.map(function(b){
+      return fetch(b+'/api/v1/comments/'+vid+'?sort_by='+s, {cache:'no-store'})
+        .then(function(r){ if(!r.ok) throw 0; return r.json(); });
+    });
+    Promise.any ? Promise.any(attempts).then(render).catch(fail)
+      : new Promise(function(res,rej){var n=0;attempts.forEach(function(p){p.then(res).catch(function(){if(++n===attempts.length)rej();});}).then?null:null;});
+    function render(d){
+      var items = (d && d.comments) || [];
+      if (!items.length){ body.innerHTML = '<div style="padding:24px;color:var(--text-secondary);">コメントなし</div>'; return; }
+      body.innerHTML = items.slice(0,80).map(function(c){
+        return '<div class="__short-cmt-item"><div class="a">'+(c.author||'')+'</div><div>'+(c.content||'').replace(/</g,'&lt;')+'</div></div>';
+      }).join('');
+    }
+    function fail(){ body.innerHTML = '<div style="padding:24px;color:var(--text-secondary);">取得に失敗しました</div>'; }
+  }
+  function attachShortCommentBtn(){
+    var shorts = document.querySelectorAll('#view-shorts .short-item, #view-shorts [data-video-id], #view-shorts .short-card');
+    shorts.forEach(function(s){
+      if (s.__cmtBtn) return;
+      var vid = s.dataset.videoId || (s.querySelector('video')||{}).dataset && s.querySelector('video').dataset.videoId;
+      if (!vid){ var a = s.querySelector('a[href*="watch?v="]'); if(a){ vid = (a.href.match(/v=([\w-]+)/)||[])[1]; } }
+      if (!vid) return;
+      var b = document.createElement('button');
+      b.className = '__short-cmt-btn';
+      b.innerHTML = '💬';
+      b.title = 'コメント';
+      b.onclick = function(e){
+        e.stopPropagation();
+        ensureShortCommentsPanel();
+        var p = document.getElementById('__short_cmt');
+        p.dataset.vid = vid;
+        p.classList.add('open');
+        loadShortComments(vid, 'top');
+      };
+      s.style.position = s.style.position || 'relative';
+      s.appendChild(b);
+      s.__cmtBtn = true;
+    });
+  }
+  setInterval(attachShortCommentBtn, 1500);
+
+  console.log('[v2-patch] 全機能適用完了');
+})();
+</script>
 </body></html>
+
  
