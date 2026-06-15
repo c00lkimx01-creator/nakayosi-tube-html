@@ -1692,28 +1692,25 @@ async function fetchFromInvidious(query, context, page = 1) {
              : (context === 'trend')  ? 'trend'
              : (context === 'search') ? 'search'
              : 'search';
-  // 検索の信頼性を最大化するため、役割プールではなく全インスタンスを使用
-  const pool = (context === 'search') ? INVIDIOUS_INSTANCES.slice() : getInvidiousFor(role);
+  // home と同じく、最速選定済みの役割別プールを使う（検索だけ全件を使っていたため遅延していた）
+  const pool = getInvidiousFor(role);
   const path = `/api/v1/search?q=${encodeURIComponent(q)}&page=${page}&hl=ja&region=JP`;
   const CORS_FALLBACKS = [
     (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
     (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
     (u) => 'https://api.codetabs.com/v1/proxy/?quest=' + u,
   ];
-  const tryUrl = (url, timeout = 5000) => fetch(url, { signal: AbortSignal.timeout(timeout) })
+  const tryUrl = (url, timeout = 4500) => fetch(url, { signal: AbortSignal.timeout(timeout) })
     .then(r => { if (!r.ok) throw new Error('bad'); return r.json(); })
     .then(d => { if (!d || (Array.isArray(d) && d.length === 0)) throw new Error('empty'); return d; });
-  // ラウンド1: 直接アクセスを全インスタンスでレース
-  const direct = pool.map(inst => tryUrl(buildFetchUrl(`${inst}${path}`), 4500));
-  try { return await Promise.any(direct); } catch(e) {}
-  // ラウンド2: CORSプロキシ経由で再レース（直接失敗時のフォールバック）
-  const proxied = [];
-  for (const inst of pool.slice(0, 10)) {
-    for (const wrap of CORS_FALLBACKS) {
-      proxied.push(tryUrl(wrap(`${inst}${path}`), 6500));
-    }
-  }
-  try { return await Promise.any(proxied); } catch(e) { return null; }
+  // 直接アクセスと CORS プロキシ経由を同時にレースさせ、最速で成功したものを採用
+  // （以前は「直接 → 全滅後にプロキシ」の2段構えで検索が大幅に遅延していた）
+  const racers = [];
+  pool.forEach(inst => { racers.push(tryUrl(buildFetchUrl(`${inst}${path}`), 4500)); });
+  pool.slice(0, 6).forEach(inst => {
+    CORS_FALLBACKS.forEach(wrap => { racers.push(tryUrl(wrap(`${inst}${path}`), 5500)); });
+  });
+  try { return await Promise.any(racers); } catch(e) { return null; }
 }
 function _pickBestChannel(list, target) {
   if (!Array.isArray(list)) return null;
@@ -2491,6 +2488,31 @@ function renderSearchResults(videos, append = false) {
     container.appendChild(item);
   });
   document.getElementById('search-loader')?.classList.add('hidden');
+  ensureSearchInfiniteScroll();
+}
+// === 検索結果の無限スクロール（IntersectionObserver） ===
+let _searchInfObserver = null;
+function ensureSearchInfiniteScroll(){
+  const list = document.getElementById('search-results-list');
+  if (!list) return;
+  let sentinel = document.getElementById('search-infinite-sentinel');
+  if (!sentinel) {
+    sentinel = document.createElement('div');
+    sentinel.id = 'search-infinite-sentinel';
+    sentinel.style.cssText = 'height:1px;width:100%;';
+    list.parentNode.insertBefore(sentinel, list.nextSibling);
+  }
+  if (_searchInfObserver) _searchInfObserver.disconnect();
+  _searchInfObserver = new IntersectionObserver((entries) => {
+    if (!entries[0].isIntersecting) return;
+    if (currentView !== 'search') return;
+    if (isFetching) return;
+    if (!lastQuery) return;
+    const loader = document.getElementById('search-loader');
+    loader?.classList.remove('hidden');
+    triggerSearch(lastQuery, 'search', true);
+  }, { rootMargin: '800px 0px' });
+  _searchInfObserver.observe(sentinel);
 }
 function renderSearchChannels(channels) {
   const sec = document.getElementById('search-channels-section');
@@ -4881,6 +4903,7 @@ window.fetchExtraSearch = async function(query){
     };
   }
 })();
+</script>
 <script>
 // ===== CORS自動回避: どのドメインでも動画APIにアクセス可能にする =====
 (function(){
@@ -8094,6 +8117,1107 @@ window.fetchExtraSearch = async function(query){
   console.log('[v2-patch] 全機能適用完了');
 })();
 </script>
+<style id="__final_overrides_css">
+/* --- 偽装スプラッシュ --- */
+#__disguise{position:fixed;inset:0;z-index:2147483647;background:#fff;}
+#__disguise iframe{width:100%;height:100%;border:0;display:block;}
+/* スケルトンを完全に削除（バグ画像の元） */
+.skeleton-grid,.skeleton-card,.skeleton-thumb,.skeleton-line,.skeleton-shorts-row,.skeleton-short-card,.skeleton-short-thumb,.sk-base{display:none !important;animation:none !important;background:transparent !important;}
+.loader{color:var(--text-secondary,#aaa) !important;background:transparent !important;padding:24px;text-align:center;font-size:13px;}
+.loader::before{content:"読み込み中...";}
+.loader[data-no-text]::before{content:"";}
+/* 右上 plus-home ボタン削除 */
+#plus-home-btn{display:none !important;}
+/* 「後で見る」を保存ボタンの右に表示（角丸の長方形・通常の action-btn 風） */
+#__wl_btn{display:inline-flex !important;align-items:center;gap:6px;padding:10px 14px !important;border-radius:18px !important;background:var(--chip-bg) !important;color:var(--text-color) !important;border:1px solid var(--border-color) !important;font-size:13px;font-weight:500;margin-left:8px !important;white-space:nowrap;height:36px;}
+#__wl_btn.active{background:var(--text-color) !important;color:var(--bg-color) !important;}
+/* 3点メニューを動画カードの右下に */
+.video-card{position:relative;}
+.video-card .__menu-dots{position:absolute;right:8px;bottom:78px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;display:none;align-items:center;justify-content:center;font-size:18px;line-height:1;cursor:pointer;z-index:3;}
+.video-card:hover .__menu-dots,.video-card .__menu-dots.show{display:flex;}
+/* 既存の3点メニュー（あれば）は非表示にして上書き */
+.video-card .menu-btn,.video-card .more-btn,.video-card [data-menu="dots"]{display:none !important;}
+</style>
+<script>
+/* ============================================================
+   FINAL OVERRIDE PATCH  (ユーザー要望 一括対応)
+   ============================================================ */
+(function(){
+  'use strict';
+
+  /* ---------- 0) 偽装スプラッシュ (3秒) ---------- */
+  (function disguise(){
+    try {
+      if (sessionStorage.getItem('__disguise_done') === '1') return;
+      sessionStorage.setItem('__disguise_done','1');
+    } catch(_){}
+    var sites = [
+      {name:'Google', url:'https://www.google.com/webhp?igu=1'},
+      {name:'Classroom', url:'https://classroom.google.com/'},
+      {name:'ロイロノート', url:'https://loilonote.app/login'},
+      {name:'勉強web', url:'https://www.benkyo-web.com/'},
+      {name:'Kahoot', url:'https://kahoot.it/'},
+      {name:'Qubena', url:'https://account.qubena.com/login'}
+    ];
+    var pick = sites[Math.floor(Math.random()*sites.length)];
+    var wrap = document.createElement('div'); wrap.id='__disguise';
+    // iframe (X-Frame-Options でブロックされる可能性が高いので、
+    // ブロック時はその場で擬似ログイン画面に切り替え)
+    var ifr = document.createElement('iframe');
+    ifr.src = pick.url;
+    ifr.referrerPolicy = 'no-referrer';
+    wrap.appendChild(ifr);
+    document.documentElement.appendChild(wrap);
+    var loaded = false;
+    ifr.addEventListener('load', function(){ loaded = true; });
+    // 1.2秒で読めてなければ擬似画面に差し替え
+    setTimeout(function(){
+      if (loaded) return;
+      var bg = {Google:'#fff', Classroom:'#1967d2', 'ロイロノート':'#fff', '勉強web':'#fff', Kahoot:'#46178f', Qubena:'#fff'}[pick.name] || '#fff';
+      var fg = (bg === '#fff') ? '#222' : '#fff';
+      wrap.innerHTML = ''
+        + '<div style="width:100%;height:100%;background:'+bg+';color:'+fg+';display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Roboto,Arial,sans-serif;">'
+        + '<div style="font-size:42px;font-weight:700;margin-bottom:24px;">'+pick.name+'</div>'
+        + '<div style="background:#fff;color:#222;padding:28px;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.15);width:300px;">'
+        + '<div style="font-size:14px;color:#666;margin-bottom:12px;">ログイン</div>'
+        + '<input placeholder="メールアドレス" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:10px;font-size:14px;">'
+        + '<input placeholder="パスワード" type="password" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:14px;font-size:14px;">'
+        + '<button style="width:100%;padding:10px;background:#1967d2;color:#fff;border:0;border-radius:4px;font-size:14px;">ログイン</button>'
+        + '</div></div>';
+    }, 1200);
+    setTimeout(function(){
+      try { wrap.remove(); } catch(_){}
+    }, 3000);
+  })();
+
+  /* ---------- 1) Trending hash を /#/trending に & 初期 home へ ---------- */
+  function fixInitialRoute(){
+    var h = location.hash || '';
+    if (h === '' || h === '#' || h === '#/' || /^#\/(trending|gust|plus-home)?$/.test(h)) {
+      if (h === '#/trending') return; // 明示 trending はそのまま
+      try { history.replaceState(null,'','#/home'); } catch(_){ location.hash='#/home'; }
+    }
+  }
+  fixInitialRoute();
+  // Trending 専用ハッシュ
+  window.addEventListener('hashchange', function(){
+    if (location.hash === '#/trending' && typeof window.__openTrending === 'function') {
+      window.__openTrending();
+    } else if (location.hash === '#/home' && typeof window.navigate === 'function') {
+      window.navigate('home', {noHistory:true});
+    }
+  });
+  function goTrending(){
+    try { history.pushState(null,'','#/trending'); } catch(_){ location.hash = '#/trending'; }
+    if (typeof window.__openTrending === 'function') window.__openTrending();
+  }
+  window.goTrending = goTrending;
+
+  /* ---------- 2) 初期表示を home に強制 ---------- */
+  function forceHomeFirst(){
+    if (location.hash === '#/trending') return;
+    try {
+      if (typeof window.navigate === 'function') window.navigate('home',{noHistory:true});
+    } catch(_){}
+  }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(forceHomeFirst, 100); });
+  setTimeout(forceHomeFirst, 1200);
+
+  /* ---------- 3) 右上の家ボタン削除 ---------- */
+  function removeHomeBtn(){
+    var b = document.getElementById('plus-home-btn'); if (b) b.remove();
+  }
+  setInterval(removeHomeBtn, 1000);
+
+  /* ---------- 4) メニュー (後で見る) 重複排除 ---------- */
+  function dedupeWatchLater(){
+    var seen = false;
+    document.querySelectorAll('#sidebar .sidebar-item').forEach(function(it){
+      var t = (it.textContent||'').trim();
+      if (t === '後で見る') {
+        if (seen) it.remove();
+        else { seen = true; it.id = it.id || 'nav-watchlater'; }
+      }
+    });
+  }
+  setInterval(dedupeWatchLater, 1200);
+
+  /* ---------- 5) Invidious プールを yt.omada.cafe 固定 (stream 用) ---------- */
+  function pinOmada(){
+    var pin = 'https://yt.omada.cafe';
+    if (Array.isArray(window.INVIDIOUS_INSTANCES)) {
+      window.INVIDIOUS_INSTANCES = [pin].concat(
+        window.INVIDIOUS_INSTANCES.filter(function(u){ return u && u !== pin; })
+      );
+    } else {
+      window.INVIDIOUS_INSTANCES = [pin,'https://invidious.f5.si','https://inv.nadeko.net','https://iv.melmac.space'];
+    }
+    // stream 取得関数があれば omada 固定にラップ
+    if (window.__fastStream && !window.__fastStream.__pinned) {
+      var orig = window.__fastStream;
+      window.__fastStream = function(videoId, h){
+        var url = pin+'/api/v1/videos/'+encodeURIComponent(videoId)+'?fields=adaptiveFormats,formatStreams';
+        return fetch(url,{cache:'no-store'}).then(function(r){
+          if (!r.ok) throw 0; return r.json();
+        }).then(function(d){
+          var fmts = [].concat(d.adaptiveFormats||[], d.formatStreams||[]);
+          var vids = fmts.filter(function(f){return f && f.url && /video\/mp4/i.test(f.type||'');})
+            .sort(function(a,b){ var ha=parseInt(a.qualityLabel||a.resolution||'0',10)||0,hb=parseInt(b.qualityLabel||b.resolution||'0',10)||0; return Math.abs(ha-(h||720))-Math.abs(hb-(h||720));});
+          var auds = fmts.filter(function(f){return f && f.url && /audio\/mp4/i.test(f.type||'');})
+            .sort(function(a,b){return (b.bitrate||0)-(a.bitrate||0);});
+          if (vids[0] && auds[0]) return {kind:'split',video:vids[0].url,audio:auds[0].url,instance:pin};
+          if (vids[0]) return {kind:'muxed',video:vids[0].url,instance:pin};
+          // fallback to original parallel impl
+          return orig(videoId,h);
+        }).catch(function(){ return orig(videoId,h); });
+      };
+      window.__fastStream.__pinned = true;
+    }
+  }
+  pinOmada();
+  setTimeout(pinOmada, 600);
+  setTimeout(pinOmada, 2500);
+
+  /* ---------- 6) 役割分担:  trending=omada / search=f5 / channel=nadeko / comments=melmac ---------- */
+  var ROLE_MAP = [
+    {re:/\/api\/v1\/trending/,           host:'https://yt.omada.cafe'},
+    {re:/\/api\/v1\/search/,             host:'https://invidious.f5.si'},
+    {re:/\/api\/v1\/channels\/[^/]+\/?$/, host:'https://inv.nadeko.net'},
+    {re:/\/api\/v1\/channels\//,         host:'https://inv.nadeko.net'},
+    {re:/\/api\/v1\/comments\//,         host:'https://iv.melmac.space'},
+    {re:/\/api\/v1\/videos\//,           host:'https://yt.omada.cafe'}
+  ];
+  var KNOWN_HOSTS = /^https:\/\/(yt\.omada\.cafe|invidious\.f5\.si|inv\.nadeko\.net|iv\.melmac\.space|invidious\.nerdvpn\.de|invidious\.privacyredirect\.com|yewtu\.be)/;
+  var _origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init){
+    try {
+      var url = (typeof input === 'string') ? input : (input && input.url);
+      if (url && KNOWN_HOSTS.test(url)) {
+        for (var i=0;i<ROLE_MAP.length;i++){
+          if (ROLE_MAP[i].re.test(url)) {
+            var newUrl = url.replace(KNOWN_HOSTS, ROLE_MAP[i].host);
+            if (typeof input === 'string') input = newUrl;
+            else input = new Request(newUrl, input);
+            break;
+          }
+        }
+      }
+    } catch(_){}
+    return _origFetch(input, init);
+  };
+
+  /* ---------- 7) チャンネルアイコンを取得して表示 ---------- */
+  function fillChannelAvatars(){
+    document.querySelectorAll('.channel-avatar, img.channel-avatar, #watch-channel-icon').forEach(function(img){
+      if (!img || img.tagName !== 'IMG') {
+        // div の場合は中の img を作る
+        if (img && img.tagName === 'DIV' && !img.querySelector('img')) {
+          var i = document.createElement('img'); i.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%;';
+          img.appendChild(i); img = i;
+        } else return;
+      }
+      if (img.dataset.avFilled) return;
+      if (img.src && img.src.indexOf('data:') !== 0 && !/^https?:\/\/[^/]+\/?$/.test(img.src) && img.src.indexOf('blank')<0) {
+        img.dataset.avFilled = '1'; return;
+      }
+      // 近くの author / channel id を探す
+      var card = img.closest('.video-card, .watch-channel-info, .sub-channel-card, .sidebar-channel-item, .channel-row, .channel-header') || img.parentElement;
+      var cid = card && (card.dataset.channelId || card.getAttribute('data-channel-id') || card.getAttribute('data-author-id'));
+      if (!cid) {
+        var a = card && card.querySelector('a[href*="/channel/"], a[href*="/@"]');
+        if (a) {
+          var m = a.href.match(/\/channel\/([\w-]+)/) || a.href.match(/\/@([\w.\-]+)/);
+          if (m) cid = m[1];
+        }
+      }
+      if (!cid) return;
+      img.dataset.avFilled = '1';
+      fetch('https://inv.nadeko.net/api/v1/channels/'+encodeURIComponent(cid)+'?fields=authorThumbnails',{cache:'force-cache'})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){
+          if (!d || !d.authorThumbnails) return;
+          var t = d.authorThumbnails.find(function(x){return x.width>=88;}) || d.authorThumbnails[d.authorThumbnails.length-1];
+          if (t && t.url) img.src = t.url.indexOf('//') === 0 ? 'https:'+t.url : t.url;
+        }).catch(function(){});
+    });
+  }
+  setInterval(fillChannelAvatars, 1500);
+
+  /* ---------- 8) 後で見るボタンを「保存」の右に配置 ---------- */
+  function placeWLNextToSave(){
+    var watch = document.getElementById('view-watch');
+    if (!watch || !watch.classList.contains('active')) return;
+    var actions = watch.querySelector('.action-buttons') || watch.querySelector('.watch-actions');
+    if (!actions) return;
+    // 「保存」ボタン検索
+    var saveBtn = Array.from(actions.querySelectorAll('button')).find(function(b){
+      return /保存/.test(b.textContent||'');
+    });
+    var wl = document.getElementById('__wl_btn');
+    var id = (location.hash.match(/[?&]v=([\w-]{6,})/)||[])[1] || window.currentVideoId;
+    if (!id) return;
+    if (!wl) {
+      wl = document.createElement('button'); wl.id='__wl_btn';
+      wl.onclick = function(){
+        if (!window.watchLater) return;
+        var title = (document.querySelector('#watch-title-text, #api-title, #view-watch h1')||{}).textContent||'';
+        var author = (document.querySelector('#watch-channel-name, #api-author, .channel-name')||{}).textContent||'';
+        window.watchLater.toggle({videoId:id, title:title.trim(), author:author.trim()});
+        refresh();
+      };
+    }
+    function refresh(){
+      var has = window.watchLater && window.watchLater.has(id);
+      wl.innerHTML = (has?'✓ ':'+ ') + '後で見る';
+      wl.classList.toggle('active', !!has);
+    }
+    refresh();
+    if (saveBtn && saveBtn.parentNode) {
+      if (wl.previousSibling !== saveBtn) saveBtn.parentNode.insertBefore(wl, saveBtn.nextSibling);
+    } else {
+      actions.appendChild(wl);
+    }
+  }
+  setInterval(placeWLNextToSave, 1200);
+
+  /* ---------- 9) watch ページの再生 / タイトル取得を強化 ---------- */
+  function rescueWatch(){
+    var w = document.getElementById('view-watch');
+    if (!w || !w.classList.contains('active')) return;
+    var id = (location.hash.match(/[?&]v=([\w-]{6,})/)||[])[1] || window.currentVideoId;
+    if (!id) return;
+    var titleEl = document.getElementById('watch-title-text') || w.querySelector('h1');
+    var needsTitle = titleEl && (!titleEl.textContent.trim() || titleEl.textContent.trim()==='タイトル');
+    var iframe = document.getElementById('yt-player');
+    var needsPlayer = iframe && (!iframe.src || iframe.src==='about:blank' || /about:blank/.test(iframe.src));
+    if (!needsTitle && !needsPlayer) return;
+    if (w.dataset.rescuedFor === id) return;
+    w.dataset.rescuedFor = id;
+    if (needsPlayer && iframe) {
+      iframe.src = 'https://www.youtube-nocookie.com/embed/'+id+'?autoplay=1&rel=0';
+    }
+    // メタデータを Invidious から取得
+    fetch('https://inv.nadeko.net/api/v1/videos/'+id+'?fields=title,author,authorId,authorThumbnails,viewCount,likeCount,published,publishedText,descriptionHtml,description',{cache:'no-store'})
+      .then(function(r){ return r.ok? r.json(): null; })
+      .then(function(d){
+        if (!d) return;
+        window.currentVideoId = id;
+        window.currentVideoTitle = d.title || '';
+        if (titleEl && d.title) titleEl.textContent = d.title;
+        var nm = document.getElementById('watch-channel-name'); if (nm && d.author) nm.textContent = d.author;
+        var ic = document.getElementById('watch-channel-icon');
+        if (ic && d.authorThumbnails && d.authorThumbnails.length) ic.src = d.authorThumbnails[d.authorThumbnails.length-1].url;
+        var v = document.getElementById('api-views'); if (v && d.viewCount!=null) v.textContent = d.viewCount.toLocaleString();
+        var l = document.getElementById('api-likes'); if (l && d.likeCount!=null) l.textContent = d.likeCount.toLocaleString();
+        var dt = document.getElementById('api-date'); if (dt && d.publishedText) dt.textContent = '• '+d.publishedText;
+        var ds = document.getElementById('api-desc'); if (ds) ds.innerHTML = d.descriptionHtml || (d.description||'').replace(/\n/g,'<br>');
+        if (ic && (!ic.src || ic.src.indexOf('blank')>0)) {
+          ic.src = 'https://i.ytimg.com/vi/'+id+'/default.jpg';
+        }
+      }).catch(function(){});
+  }
+  setInterval(rescueWatch, 1500);
+  window.addEventListener('hashchange', function(){
+    setTimeout(rescueWatch, 200);
+  });
+
+  /* ---------- 10) 3点メニューを動画カードの右下に配置 ---------- */
+  function addDots(){
+    document.querySelectorAll('.video-card').forEach(function(card){
+      if (card.__dotsAdded) return; card.__dotsAdded = true;
+      var d = document.createElement('button');
+      d.className = '__menu-dots';
+      d.innerHTML = '⋮';
+      d.title = 'その他';
+      d.onclick = function(e){
+        e.stopPropagation(); e.preventDefault();
+        var vid = (card.getAttribute('data-wl-open') || (card.querySelector('a[href*="watch?v="]')||{}).href || '').match(/[\w-]{6,}/);
+        var id = vid ? vid[0] : null;
+        if (!id) return;
+        if (window.watchLater) {
+          if (window.watchLater.has(id)) window.watchLater.remove(id);
+          else window.watchLater.add({videoId:id,
+            title:(card.querySelector('.video-title')||{}).textContent||'',
+            author:(card.querySelector('.video-meta-channel')||{}).textContent||''});
+        }
+      };
+      card.appendChild(d);
+    });
+  }
+  setInterval(addDots, 1500);
+
+  /* ---------- 11) 急上昇ハッシュ初回判定 ---------- */
+  setTimeout(function(){
+    if (location.hash === '#/trending' && typeof window.__openTrending === 'function') {
+      window.__openTrending();
+    }
+  }, 1500);
+
+  console.log('[final-override] applied');
+})();
+</script>
+
+
+<style id="lv-patch-v2">
+/* ヘッダー右上のテーマ切替ボタンを非表示（設定からのみ切替可能） */
+.header-right button.icon-btn[onclick*="toggleTheme"]{display:none !important;}
+</style>
+<script>
+(function(){
+  if (window.__LV_PATCH_V2) return; window.__LV_PATCH_V2 = true;
+
+  /* ---------- A) ストリームは必ず yt.omada.cafe で取得 ---------- */
+  var OMADA = 'https://yt.omada.cafe';
+  function toOmada(u){
+    try{
+      if (!u) return u;
+      if (typeof u !== 'string') return u;
+      // 相対パス
+      if (u.startsWith('/latest_version') || u.startsWith('/videoplayback')) return OMADA + u;
+      var m = u.match(/^https?:\/\/[^\/]+(\/(latest_version|videoplayback)[^\s"']*)/);
+      if (m) return OMADA + m[1];
+      return u;
+    }catch(e){return u;}
+  }
+  // 既存の __fastStream を上書き
+  var prev = window.__fastStream;
+  window.__fastStream = function(id){
+    return OMADA + '/latest_version?id=' + encodeURIComponent(id) + '&itag=18&local=true';
+  };
+  // <video>/<source> の src を監視して書き換え
+  var srcDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src')
+             || Object.getOwnPropertyDescriptor(HTMLSourceElement.prototype,'src');
+  function hookSrc(proto){
+    var d = Object.getOwnPropertyDescriptor(proto,'src');
+    if (!d || !d.set) return;
+    Object.defineProperty(proto,'src',{
+      configurable:true,
+      get:d.get,
+      set:function(v){ try{ v = toOmada(v); }catch(e){} return d.set.call(this,v); }
+    });
+  }
+  try{ hookSrc(HTMLVideoElement.prototype); }catch(e){}
+  try{ hookSrc(HTMLSourceElement.prototype); }catch(e){}
+  // setAttribute 経由も
+  var sa = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function(n,v){
+    if (n === 'src' && (this.tagName==='VIDEO' || this.tagName==='SOURCE')) {
+      try{ v = toOmada(v); }catch(e){}
+    }
+    return sa.call(this,n,v);
+  };
+
+  /* ---------- B) 検索/チャンネルを Home と同じ「最速到着順」で表示 ---------- */
+  var SEARCH_HOSTS = [
+    'https://yt.omada.cafe',
+    'https://invidious.f5.si',
+    'https://inv.nadeko.net',
+    'https://iv.melmac.space',
+    'https://invidious.nerdvpn.de',
+    'https://yewtu.be',
+    'https://invidious.privacyredirect.com'
+  ];
+  var SEARCH_CACHE = new Map();
+  var CHANNEL_CACHE = new Map();
+  var _lvSearchToken = 0;
+  var _lvSearchBusy = false;
+  var _lvChannelToken = 0;
+  var _origTriggerSearch = window.triggerSearch;
+  var _origHandleSearch = window.handleSearch;
+  var _origFetchChannelInfo = window.fetchChannelInfoFromInvidious;
+  var _origFetchChannelVideos = window.fetchChannelVideos;
+  var _origFetchChannelLiveVideos = window.fetchChannelLiveVideos;
+  var _origFetchChannelShortsMultiPage = window.fetchChannelShortsMultiPage;
+
+  function uniqPush(arr, u){
+    if (!u || typeof u !== 'string') return;
+    u = u.replace(/\/$/, '');
+    if (!/^https?:\/\//.test(u)) return;
+    if (arr.indexOf(u) < 0) arr.push(u);
+  }
+  function fastPool(role, max){
+    var out = [];
+    try { if (Array.isArray(_fastInvList)) _fastInvList.forEach(function(u){ uniqPush(out,u); }); } catch(e){}
+    try { if (typeof getInvidiousFor === 'function') (getInvidiousFor(role)||[]).forEach(function(u){ uniqPush(out,u); }); } catch(e){}
+    SEARCH_HOSTS.forEach(function(u){ uniqPush(out,u); });
+    try { (window.INVIDIOUS_INSTANCES||[]).slice(0, 18).forEach(function(u){ uniqPush(out,u); }); } catch(e){}
+    return out.slice(0, max || 10);
+  }
+  var FAST_CORS = [
+    function(u){ return u; },
+    function(u){ return 'https://corsproxy.io/?' + encodeURIComponent(u); },
+    function(u){ return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+    function(u){ return 'https://api.codetabs.com/v1/proxy?quest=' + u; }
+  ];
+  function fetchJsonFast(url, ms){
+    return fetch(url, { signal: AbortSignal.timeout(ms || 3200), cache: 'force-cache', headers: { 'Accept': 'application/json' } })
+      .then(function(r){ if (!r || !r.ok) throw new Error('bad'); return r.text(); })
+      .then(function(t){ var d = JSON.parse(t); if (!d || (Array.isArray(d) && !d.length)) throw new Error('empty'); return d; });
+  }
+  function raceNonEmpty(promises){
+    if (!promises.length) return Promise.resolve(null);
+    return Promise.any(promises.map(function(p){
+      return Promise.resolve(p).then(function(v){
+        if (Array.isArray(v) && v.length) return v;
+        if (v && !Array.isArray(v)) return v;
+        throw new Error('empty');
+      });
+    })).catch(function(){ return null; });
+  }
+  function parseDateToSec(s){
+    if (!s) return 0;
+    if (typeof s === 'number') return s > 1000000000 ? s : 0;
+    var t = Date.parse(s);
+    return isNaN(t) ? 0 : Math.floor(t/1000);
+  }
+  function mapSearchItem(v){
+    if (!v) return null;
+    var id = v.videoId || v.id;
+    if (!id && v.url) { var m = String(v.url).match(/[?&]v=([A-Za-z0-9_-]{11})/) || String(v.url).match(/\/watch\/([A-Za-z0-9_-]{11})/); id = m && m[1]; }
+    if (!id || String(id).length !== 11) return null;
+    var author = v.author || v.uploaderName || v.uploader || v.channel || '';
+    var authorId = v.authorId || (v.uploaderUrl ? String(v.uploaderUrl).replace(/^\/channel\//,'').replace(/^\/c\//,'') : '') || '';
+    var thumb = '';
+    if (v.authorThumbnails && v.authorThumbnails.length) thumb = (v.authorThumbnails[v.authorThumbnails.length-1] || v.authorThumbnails[0]).url || '';
+    if (!thumb && v.uploaderAvatar) thumb = v.uploaderAvatar;
+    if (!thumb) thumb = 'https://i.pravatar.cc/72?u=' + encodeURIComponent(author || authorId || id);
+    var publishedText = v.publishedText || v.uploadedDate || v.uploaded || '';
+    var publishedTs = v.publishedTimestamp || v.published || parseDateToSec(publishedText) || 0;
+    return {
+      id: id,
+      title: v.title || '',
+      channel: author || authorId || 'YouTube',
+      channelId: authorId,
+      authorId: authorId,
+      isShort: (v.lengthSeconds || v.duration || 0) > 0 && (v.lengthSeconds || v.duration || 0) <= 61,
+      isLive: !!(v.liveNow || v.live || v.isLive),
+      authorThumb: thumb,
+      duration: v.lengthSeconds || v.duration || 0,
+      published: publishedText,
+      publishedTimestamp: publishedTs,
+      viewCount: v.viewCount || v.views || 0
+    };
+  }
+  function dedupeVideos(items){
+    var seen = new Set();
+    var out = [];
+    (items || []).forEach(function(x){
+      var v = mapSearchItem(x);
+      if (!v || seen.has(v.id)) return;
+      seen.add(v.id); out.push(v);
+    });
+    return out;
+  }
+  function currentVideoIds(){
+    var ids = new Set();
+    document.querySelectorAll('#search-results-list [data-vid]').forEach(function(el){ if (el.dataset.vid) ids.add(el.dataset.vid); });
+    return ids;
+  }
+  function esc(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function fmtViewsLocal(n){
+    try { if (typeof formatViews === 'function') return formatViews(n); } catch(e){}
+    if (!n) return '';
+    if (n >= 100000000) return (n/100000000).toFixed(1)+'億回視聴';
+    if (n >= 10000) return Math.floor(n/10000)+'万回視聴';
+    return Number(n).toLocaleString()+'回視聴';
+  }
+  function fmtDurLocal(n){ try { return typeof formatDuration === 'function' ? formatDuration(n) : ''; } catch(e){ return ''; } }
+  function fmtPubLocal(v){
+    try { if (v.publishedTimestamp && typeof formatRelativeJa === 'function') return formatRelativeJa(v.publishedTimestamp); } catch(e){}
+    return v.published || '';
+  }
+
+  window.renderSearchResults = function(videos, append){
+    var container = document.getElementById('search-results-list');
+    if (!container) return;
+    if (!append) container.innerHTML = '';
+    var existing = append ? currentVideoIds() : new Set();
+    var list = (videos || []).filter(function(v){ return v && v.id && !existing.has(v.id); });
+    if (!append && !list.length) {
+      container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary);font-size:14px;">検索結果が取得できませんでした。別のキーワードでお試しください。</div>';
+      document.getElementById('search-loader')?.classList.add('hidden');
+      return;
+    }
+    list.forEach(function(v){
+      existing.add(v.id);
+      var item = document.createElement('div');
+      item.className = 'search-result-item';
+      item.dataset.vid = v.id;
+      var dur = fmtDurLocal(v.duration);
+      var pub = fmtPubLocal(v);
+      var meta = [];
+      if (v.isLive) meta.push('<span style="color:#ff0000;font-weight:bold;">● ライブ配信中</span>');
+      else {
+        if (dur) meta.push('<span>' + esc(dur) + '</span>');
+        if (v.viewCount) meta.push('<span>' + esc(fmtViewsLocal(v.viewCount)) + '</span>');
+        if (pub) meta.push('<span>投稿日 ' + esc(pub) + '</span>');
+      }
+      item.innerHTML = '<div class="search-result-thumb"><img src="https://i.ytimg.com/vi/'+esc(v.id)+'/mqdefault.jpg" loading="lazy" decoding="async">'+(v.isLive?'<span class="live-thumb-badge">🔴 ライブ</span>':(dur?'<span class="duration-badge">'+esc(dur)+'</span>':''))+'</div>'
+        + '<div class="search-result-info"><div class="search-result-title">'+esc(v.title)+'</div>'
+        + '<div class="search-result-meta">'+meta.join('<span>•</span>')+'</div>'
+        + '<div class="search-result-channel"><div class="search-result-channel-icon"><img src="'+esc(v.authorThumb)+'" loading="lazy" decoding="async"></div><span class="search-result-channel-name">'+esc(v.channel)+'</span>'+(v.channelId?'<span style="font-size:12px;color:var(--text-secondary);margin-left:8px;">@'+esc(v.channelId)+'</span>':'')+'</div></div>';
+      item.addEventListener('click', function(){ if (typeof playVideo === 'function') playVideo(v.id, v.title, v.channel, v.authorThumb); });
+      var ch = item.querySelector('.search-result-channel');
+      if (ch) ch.addEventListener('click', function(e){ e.stopPropagation(); if (typeof window.openChannel === 'function') window.openChannel(v.channel, v.authorThumb, v.channelId || v.authorId || null); });
+      container.appendChild(item);
+    });
+    document.getElementById('search-loader')?.classList.add('hidden');
+    try { if (typeof ensureSearchInfiniteScroll === 'function') ensureSearchInfiniteScroll(); } catch(e){}
+  };
+  try { renderSearchResults = window.renderSearchResults; } catch(e){}
+
+  function buildSearchTasks(query, page){
+    var tasks = [];
+    fastPool('search', 9).forEach(function(inst, idx){
+      var target = inst + '/api/v1/search?q=' + encodeURIComponent(query) + '&type=video&page=' + (page || 1) + '&hl=ja&region=JP';
+      FAST_CORS.slice(0, idx < 3 ? 3 : 1).forEach(function(wrap){ tasks.push(fetchJsonFast(wrap(target), idx < 3 ? 2800 : 3400)); });
+    });
+    if (page <= 1) {
+      (window.PIPED_INSTANCES || []).slice(0, 5).forEach(function(inst){
+        var url = inst.replace(/\/$/,'') + '/search?q=' + encodeURIComponent(query) + '&filter=videos';
+        tasks.push(fetchJsonFast(url, 3200).then(function(d){ return (d && (d.items || d.results)) || []; }));
+      });
+    }
+    return tasks;
+  }
+  async function lvFastSearch(query, append){
+    query = (query || '').trim();
+    if (!query || _lvSearchBusy) return;
+    _lvSearchBusy = true;
+    var token = ++_lvSearchToken;
+    try {
+      if (typeof searchContext !== 'undefined') searchContext = 'search';
+      if (typeof lastQuery !== 'undefined') lastQuery = query;
+      if (typeof isFetching !== 'undefined') isFetching = true;
+      if (!append) { try { seenVideoIds.clear(); } catch(e){} try { currentPage = 1; } catch(e){} }
+      else { try { currentPage = (currentPage || 1) + 1; } catch(e){} }
+      var page = (typeof currentPage !== 'undefined' && currentPage) ? currentPage : 1;
+      var key = query + '|' + page;
+      var loader = document.getElementById('search-loader');
+      if (loader) loader.classList.remove('hidden');
+      if (!append) {
+        var list = document.getElementById('search-results-list');
+        if (list) list.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary);font-size:14px;">検索中...</div>';
+      }
+      if (SEARCH_CACHE.has(key)) {
+        window.renderSearchResults(SEARCH_CACHE.get(key), !!append);
+        return;
+      }
+      var tasks = buildSearchTasks(query, page);
+      var first = await raceNonEmpty(tasks);
+      if (token !== _lvSearchToken) return;
+      var firstVideos = dedupeVideos(Array.isArray(first) ? first : []);
+      if (firstVideos.length) {
+        SEARCH_CACHE.set(key, firstVideos);
+        window.renderSearchResults(firstVideos, !!append);
+      }
+      Promise.allSettled(tasks).then(function(rs){
+        if (token !== _lvSearchToken) return;
+        var all = [];
+        rs.forEach(function(r){ if (r.status === 'fulfilled' && Array.isArray(r.value)) all = all.concat(r.value); });
+        var merged = dedupeVideos(all);
+        if (!merged.length) {
+          if (!firstVideos.length) window.renderSearchResults([], !!append);
+          return;
+        }
+        SEARCH_CACHE.set(key, merged);
+        var existing = currentVideoIds();
+        var fresh = merged.filter(function(v){ return !existing.has(v.id); });
+        if (firstVideos.length) {
+          if (fresh.length) window.renderSearchResults(fresh, true);
+        } else {
+          window.renderSearchResults(merged, !!append);
+        }
+      }).catch(function(){});
+      if (!firstVideos.length) {
+        setTimeout(function(){
+          if (token !== _lvSearchToken) return;
+          var have = document.querySelectorAll('#search-results-list .search-result-item').length;
+          if (!have) window.renderSearchResults([], !!append);
+        }, 3600);
+      }
+    } finally {
+      if (typeof isFetching !== 'undefined') isFetching = false;
+      _lvSearchBusy = false;
+    }
+  }
+  window.__lvFastSearch = lvFastSearch;
+
+  window.triggerSearch = function(query, context, append){
+    if (context === 'search') return lvFastSearch(query, !!append);
+    return typeof _origTriggerSearch === 'function' ? _origTriggerSearch.apply(this, arguments) : undefined;
+  };
+  try { triggerSearch = window.triggerSearch; } catch(e){}
+
+  window.handleSearch = function(e, externalQuery){
+    if (e) { try { e.preventDefault(); } catch(_){} }
+    var q = (externalQuery || (document.getElementById('search-input') || {}).value || '').trim();
+    if (!q) return;
+    try { if (typeof saveSearchHistory === 'function') saveSearchHistory(q); } catch(_){}
+    try { lastQuery = q; currentView = 'search'; searchContext = 'search'; isFetching = false; currentPage = 1; seenVideoIds.clear(); } catch(_){}
+    var shortsSec = document.getElementById('search-shorts-section'); if (shortsSec) shortsSec.classList.add('hidden');
+    var shortsCont = document.getElementById('search-shorts-container'); if (shortsCont) shortsCont.innerHTML = '';
+    var chSec = document.getElementById('search-channels-section'); if (chSec) { chSec.innerHTML = ''; chSec.classList.add('hidden'); }
+    document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+    document.getElementById('view-search')?.classList.add('active');
+    document.querySelectorAll('.sidebar-item').forEach(function(i){ i.classList.remove('active'); });
+    var cats = document.getElementById('categories-bar'); if (cats) cats.style.display = 'flex';
+    var main = document.getElementById('main-content'); if (main) { main.style.padding = '24px'; main.style.marginTop = '112px'; }
+    try { history.pushState({ view: 'search', query: q }, '', '#/search?v=' + encodeURIComponent(q)); } catch(_){}
+    lvFastSearch(q, false);
+    try { if (typeof fetchShortsForSearch === 'function') fetchShortsForSearch(q); } catch(_){}
+    try { window.searchChannelsFromInvidious(q, 3).then(renderSearchChannels).catch(function(){}); } catch(_){}
+  };
+  try { handleSearch = window.handleSearch; } catch(e){}
+
+  function normChannelKey(s){ return String(s || '').trim().toLowerCase().replace(/^@/,''); }
+  function rememberChannel(info){
+    if (!info) return info;
+    if (info.authorId) CHANNEL_CACHE.set(normChannelKey(info.authorId), info);
+    if (info.author) CHANNEL_CACHE.set(normChannelKey(info.author), info);
+    if (info.authorHandle) CHANNEL_CACHE.set(normChannelKey(info.authorHandle), info);
+    return info;
+  }
+  function pickChannelFast(list, target){
+    try { if (typeof _pickBestChannel === 'function') return _pickBestChannel(list, target); } catch(e){}
+    var channels = (list || []).filter(function(c){ return c && c.type === 'channel' && c.authorId; });
+    return channels[0] || null;
+  }
+  function detailHasBanner(d){ return d && d.authorBanners && d.authorBanners.length; }
+  async function fetchChannelDetailFast(channelId){
+    if (!channelId) return null;
+    var tasks = fastPool('channel', 8).map(function(inst){ return fetchJsonFast(inst + '/api/v1/channels/' + encodeURIComponent(channelId), 3200); });
+    var firstP = raceNonEmpty(tasks);
+    var bannerP = new Promise(function(resolve){
+      var done = false;
+      tasks.forEach(function(p){ p.then(function(d){ if (!done && detailHasBanner(d)) { done = true; resolve(d); } }).catch(function(){}); });
+      setTimeout(function(){ if (!done) resolve(null); }, 2600);
+    });
+    var both = await Promise.allSettled([bannerP, firstP]);
+    return (both[0].status === 'fulfilled' && both[0].value) || (both[1].status === 'fulfilled' && both[1].value) || null;
+  }
+  async function resolveChannelFast(channelName, knownId){
+    var key = normChannelKey(knownId || channelName);
+    if (CHANNEL_CACHE.has(key)) return CHANNEL_CACHE.get(key);
+    var found = null;
+    if (knownId && /^UC[a-zA-Z0-9_-]{20,}$/.test(String(knownId))) found = { type:'channel', author: channelName, authorId: knownId };
+    if (!found) {
+      var q = String(channelName || '').replace(/^@/,'');
+      var tasks = fastPool('channel', 8).map(function(inst){ return fetchJsonFast(inst + '/api/v1/search?q=' + encodeURIComponent(q) + '&type=channel&page=1&hl=ja&region=JP', 3000); });
+      var data = await raceNonEmpty(tasks);
+      found = pickChannelFast(data || [], q);
+    }
+    if (!found || !found.authorId) return null;
+    var detail = await fetchChannelDetailFast(found.authorId).catch(function(){ return null; });
+    return rememberChannel(Object.assign({}, found, detail || {}, { authorId: found.authorId, author: (detail && detail.author) || found.author || channelName }));
+  }
+  window.fetchChannelInfoFromInvidious = function(channelName, knownId){
+    knownId = knownId || (typeof currentChannelId !== 'undefined' ? currentChannelId : null);
+    return resolveChannelFast(channelName, knownId).catch(function(){
+      return typeof _origFetchChannelInfo === 'function' ? _origFetchChannelInfo(channelName) : null;
+    });
+  };
+  try { fetchChannelInfoFromInvidious = window.fetchChannelInfoFromInvidious; } catch(e){}
+
+  window.searchChannelsFromInvidious = async function(query, limit){
+    var tasks = fastPool('channel', 8).map(function(inst){ return fetchJsonFast(inst + '/api/v1/search?q=' + encodeURIComponent(query) + '&type=channel&page=1&hl=ja&region=JP', 3000); });
+    var data = await raceNonEmpty(tasks);
+    var arr = (data || []).filter(function(c){ return c && c.type === 'channel'; }).slice(0, limit || 3).map(rememberChannel);
+    return arr;
+  };
+  try { searchChannelsFromInvidious = window.searchChannelsFromInvidious; } catch(e){}
+
+  async function raceChannelList(channelId, path, ms){
+    var tasks = fastPool('channel', 8).map(function(inst){ return fetchJsonFast(inst + '/api/v1/channels/' + encodeURIComponent(channelId) + path, ms || 3400); });
+    return await raceNonEmpty(tasks);
+  }
+  window.fetchChannelVideos = async function(channelName, page){
+    var info = await resolveChannelFast(channelName, (typeof currentChannelId !== 'undefined' ? currentChannelId : null));
+    if (!info || !info.authorId) return typeof _origFetchChannelVideos === 'function' ? _origFetchChannelVideos(channelName, page) : null;
+    var d = await raceChannelList(info.authorId, '/videos?page=' + (page || 1), 3400).catch(function(){ return null; });
+    return { videos: (d && (d.videos || d)) || [], channelInfo: info };
+  };
+  try { fetchChannelVideos = window.fetchChannelVideos; } catch(e){}
+
+  window.fetchChannelLiveVideos = async function(channelName){
+    var info = await resolveChannelFast(channelName, (typeof currentChannelId !== 'undefined' ? currentChannelId : null));
+    if (!info || !info.authorId) return typeof _origFetchChannelLiveVideos === 'function' ? _origFetchChannelLiveVideos(channelName) : { videos: [], channelInfo: null };
+    var d = await raceChannelList(info.authorId, '/streams', 3400).catch(function(){ return null; });
+    return { videos: (d && (d.videos || d)) || [], channelInfo: info };
+  };
+  try { fetchChannelLiveVideos = window.fetchChannelLiveVideos; } catch(e){}
+
+  window.fetchChannelShortsMultiPage = async function(channelName, startPage){
+    var info = await resolveChannelFast(channelName, (typeof currentChannelId !== 'undefined' ? currentChannelId : null));
+    if (!info || !info.authorId) return typeof _origFetchChannelShortsMultiPage === 'function' ? _origFetchChannelShortsMultiPage(channelName, startPage) : { shorts: [], hasMore: false };
+    var pages = [startPage || 1, (startPage || 1) + 1, (startPage || 1) + 2];
+    var results = await Promise.all(pages.map(function(pg){ return raceChannelList(info.authorId, '/videos?page=' + pg, 3400).catch(function(){ return null; }); }));
+    var all = [];
+    results.forEach(function(d){ if (d) all = all.concat(d.videos || d || []); });
+    var shorts = all.filter(function(v){ return v && v.videoId && v.lengthSeconds > 0 && v.lengthSeconds <= 61; }).map(function(v){
+      return { id:v.videoId, title:v.title || '', channel:v.author || info.author || channelName, channelId:info.authorId, isShort:true, authorThumb:(v.authorThumbnails&&v.authorThumbnails[0]?v.authorThumbnails[0].url:(info.authorThumbnails&&info.authorThumbnails[0]?info.authorThumbnails[0].url:'')), duration:v.lengthSeconds||0, published:v.publishedText||'', viewCount:v.viewCount||0, publishedTimestamp:v.published||0 };
+    });
+    return { shorts: shorts, hasMore: all.length >= 20 };
+  };
+  try { fetchChannelShortsMultiPage = window.fetchChannelShortsMultiPage; } catch(e){}
+
+  var _origOpenChannel = window.openChannel;
+  window.openChannel = function(channelName, thumb, channelId){
+    var token = ++_lvChannelToken;
+    var fallbackThumb = thumb || ('https://i.pravatar.cc/150?u=' + encodeURIComponent(channelName || channelId || 'channel'));
+    try { currentChannelData = { name: channelName || channelId || '', thumb: fallbackThumb }; currentChannelId = channelId || null; } catch(e){}
+    if (typeof navigate === 'function') navigate('channel');
+    var nameEl = document.getElementById('channel-page-name'); if (nameEl) nameEl.innerText = channelName || channelId || '';
+    var handleEl = document.getElementById('channel-page-handle'); if (handleEl) handleEl.innerText = channelId ? ('@' + channelId) : ('@' + String(channelName || '').toLowerCase().replace(/\s/g,''));
+    var metaEl = document.getElementById('channel-page-meta'); if (metaEl) metaEl.innerText = '登録者数 -- • 動画 --件';
+    var descEl = document.getElementById('channel-page-desc'); if (descEl) descEl.innerText = '';
+    var iconEl = document.getElementById('channel-page-icon'); if (iconEl) { iconEl.src = fallbackThumb; iconEl.onerror = function(){ iconEl.src = 'https://i.pravatar.cc/150?u=' + encodeURIComponent(channelName || channelId || 'channel'); }; }
+    var canvas = document.getElementById('channel-banner-canvas'), bannerImg = document.getElementById('channel-banner-img');
+    if (bannerImg) bannerImg.style.display = 'none';
+    if (canvas) { canvas.style.display = 'block'; setTimeout(function(){ try { drawFallbackBanner(canvas); } catch(e){} }, 30); }
+    try { if (typeof updateChannelSubscribeUI === 'function') updateChannelSubscribeUI(channelName || channelId || ''); } catch(e){}
+    try { currentChannelShortsPage = 1; } catch(e){}
+    resolveChannelFast(channelName || channelId || '', channelId).then(function(info){
+      if (token !== _lvChannelToken || !info) return;
+      try { if (typeof updateChannelHeaderInfo === 'function') updateChannelHeaderInfo(info); } catch(e){}
+      if (info.authorId) { try { currentChannelId = info.authorId; history.replaceState({ view:'channel', channelId:info.authorId, channelName:info.author || channelName }, '', '#/@' + info.authorId); } catch(e){} }
+    }).catch(function(){});
+    if (typeof switchChannelTab === 'function') switchChannelTab('home');
+  };
+  try { openChannel = window.openChannel; } catch(e){}
+
+  // すでに #/search?v=... を開いている場合も即座に高速検索へ切替
+  setTimeout(function(){
+    var m = (location.hash || '').match(/#\/search\?v=([^&]+)/);
+    if (m) lvFastSearch(decodeURIComponent(m[1]), false);
+  }, 50);
+
+  console.log('[lv-patch-v2] fast search/channel applied');
+})();
+</script>
+
+
+<!-- ============================================================
+     v3 OVERRIDE PATCH  (偽装の高品質化 / チャンネル動画バグ修正 /
+                         動画カードにチャンネルアイコンを追加)
+     ============================================================ -->
+<style id="__v3_patch_css">
+/* チャンネルホーム横スクロール行: チャンネルアイコン付きレイアウト */
+.video-card-h .vh-bottom{display:flex;gap:8px;margin-top:8px;}
+.video-card-h .vh-bottom img.vh-avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--hover-color);}
+.video-card-h .vh-bottom .vh-text{flex:1;min-width:0;}
+.video-card-h .vh-bottom .vh-title{font-size:13px;font-weight:500;line-height:1.35;margin:0 0 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.video-card-h .vh-bottom .vh-ch{font-size:12px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.video-card-h .vh-bottom .vh-meta{font-size:12px;color:var(--text-secondary);margin-top:0;}
+/* ホームショート行にも小さなチャンネルアイコン */
+.home-short-card .hs-row{display:flex;gap:6px;align-items:center;margin-top:4px;}
+.home-short-card .hs-row img{width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;}
+.home-short-card .hs-row .hs-ch{font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* チャンネルライブカードにチャンネル名と一緒にアイコン強調 */
+.video-card .channel-avatar{background:var(--hover-color);}
+</style>
+<script>
+/* ============================================================
+   1) 偽装スプラッシュの高品質化
+   ============================================================ */
+(function polishDisguise(){
+  'use strict';
+  function gLogo(){
+    return '<svg width="272" height="92" viewBox="0 0 272 92" xmlns="http://www.w3.org/2000/svg">'
+      + '<text x="0" y="78" font-family="Product Sans, Arial, sans-serif" font-size="92" font-weight="500" letter-spacing="-4">'
+      + '<tspan fill="#4285F4">G</tspan><tspan fill="#EA4335">o</tspan>'
+      + '<tspan fill="#FBBC05">o</tspan><tspan fill="#4285F4">g</tspan>'
+      + '<tspan fill="#34A853">l</tspan><tspan fill="#EA4335">e</tspan>'
+      + '</text></svg>';
+  }
+  function buildGoogle(){
+    return '<div style="position:absolute;inset:0;background:#fff;font-family:arial,sans-serif;display:flex;flex-direction:column;">'
+      + '<div style="display:flex;justify-content:flex-end;align-items:center;padding:14px 22px;gap:18px;font-size:13px;color:#000;">'
+      +   '<span style="cursor:pointer;text-decoration:underline;">Gmail</span>'
+      +   '<span style="cursor:pointer;text-decoration:underline;">画像</span>'
+      +   '<button style="background:none;border:0;width:40px;height:40px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">'
+      +     '<svg width="24" height="24" viewBox="0 0 24 24" fill="#5f6368"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>'
+      +   '</button>'
+      +   '<div style="width:32px;height:32px;border-radius:50%;background:#1a73e8;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;">U</div>'
+      + '</div>'
+      + '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:max(110px,12vh);">'
+      +   gLogo()
+      +   '<div style="margin-top:26px;width:min(584px,92%);height:46px;border:1px solid #dfe1e5;border-radius:24px;display:flex;align-items:center;padding:0 14px;gap:12px;box-shadow:0 1px 6px rgba(32,33,36,.06);">'
+      +     '<svg width="20" height="20" viewBox="0 0 24 24" fill="#9aa0a6"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5 1.49-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>'
+      +     '<div style="flex:1;height:24px;cursor:text;"></div>'
+      +     '<svg width="24" height="24" viewBox="0 0 192 192"><rect width="192" height="192" fill="none"/><path d="M96 132c19.9 0 36-16.1 36-36V60c0-19.9-16.1-36-36-36S60 40.1 60 60v36c0 19.9 16.1 36 36 36z" fill="#4285F4"/><path d="M156 96c0 33.1-26.9 60-60 60s-60-26.9-60-60H12c0 41.4 31.4 75.5 71.5 79.5V204h25v-28.5C148.6 171.5 180 137.4 180 96h-24z" fill="#34A853"/></svg>'
+      +     '<svg width="24" height="24" viewBox="0 0 192 192"><path fill="#4285F4" d="M96 12L48 60h36v60h24V60h36z"/><path fill="#EA4335" d="M168 96h24v84H0V96h24v60h144z"/></svg>'
+      +   '</div>'
+      +   '<div style="margin-top:30px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'
+      +     '<button style="padding:0 16px;height:36px;border:1px solid #f8f9fa;background:#f8f9fa;color:#3c4043;font-size:14px;border-radius:4px;cursor:pointer;">Google 検索</button>'
+      +     '<button style="padding:0 16px;height:36px;border:1px solid #f8f9fa;background:#f8f9fa;color:#3c4043;font-size:14px;border-radius:4px;cursor:pointer;">I&#39;m Feeling Lucky</button>'
+      +   '</div>'
+      +   '<div style="margin-top:26px;font-size:13px;color:#4d5156;">Google を <span style="color:#1a73e8;cursor:pointer;">日本語</span> で検索</div>'
+      + '</div>'
+      + '<div style="background:#f2f2f2;color:#70757a;font-size:14px;">'
+      +   '<div style="border-bottom:1px solid #dadce0;padding:14px 28px;">日本</div>'
+      +   '<div style="display:flex;justify-content:space-between;padding:14px 28px;flex-wrap:wrap;gap:14px;">'
+      +     '<div style="display:flex;gap:24px;flex-wrap:wrap;"><span>広告</span><span>ビジネス</span><span>検索の仕組み</span></div>'
+      +     '<div style="display:flex;gap:24px;flex-wrap:wrap;"><span>プライバシー</span><span>規約</span><span>設定</span></div>'
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+  }
+  function buildClassroom(){
+    var cards = [
+      ['国語','3年A組','#1565c0'],['数学Ⅱ','3年A組','#00897b'],
+      ['英語コミュ','3年A組','#e65100'],['物理基礎','3年理系','#6a1b9a'],
+      ['日本史','3年A組','#c62828'],['体育','3年A組','#37474f']
+    ];
+    var cardsHtml = cards.map(function(c){
+      return '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(60,64,67,.15);overflow:hidden;border:1px solid #dadce0;">'
+        + '<div style="background:'+c[2]+';height:100px;padding:14px 16px;color:#fff;position:relative;">'
+        +   '<div style="font-size:22px;font-weight:500;line-height:1.2;">'+c[0]+'</div>'
+        +   '<div style="font-size:13px;opacity:.92;margin-top:4px;">'+c[1]+'</div>'
+        +   '<div style="position:absolute;right:10px;bottom:10px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.95);color:#5f6368;display:inline-flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;">T</div>'
+        + '</div>'
+        + '<div style="padding:64px 14px 14px;font-size:13px;color:#5f6368;border-top:1px solid #f1f3f4;">期限間近の課題はありません</div>'
+      + '</div>';
+    }).join('');
+    return '<div style="position:absolute;inset:0;background:#f1f3f4;font-family:\'Google Sans\',Roboto,Arial,sans-serif;display:flex;flex-direction:column;color:#3c4043;">'
+      + '<div style="height:64px;background:#fff;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #dadce0;gap:10px;">'
+      +   '<button style="width:40px;height:40px;border:0;background:none;border-radius:50%;cursor:pointer;color:#5f6368;font-size:20px;">☰</button>'
+      +   '<svg width="36" height="36" viewBox="0 0 24 24"><path fill="#0F9D58" d="M5 4h14v3H5z"/><path fill="#57BB8A" d="M3 7h18v13H3z"/><circle cx="12" cy="13" r="2" fill="#fff"/><path d="M9 18c0-1.7 1.3-3 3-3s3 1.3 3 3" stroke="#fff" stroke-width="1.5" fill="none"/></svg>'
+      +   '<div style="font-size:22px;font-weight:500;">Classroom</div>'
+      +   '<div style="flex:1;"></div>'
+      +   '<button style="width:40px;height:40px;border:0;background:none;border-radius:50%;cursor:pointer;color:#5f6368;font-size:24px;">+</button>'
+      +   '<button style="width:40px;height:40px;border:0;background:none;border-radius:50%;cursor:pointer;color:#5f6368;font-size:20px;">⚏</button>'
+      +   '<div style="width:32px;height:32px;border-radius:50%;background:#0f9d58;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:600;">U</div>'
+      + '</div>'
+      + '<div style="flex:1;padding:24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;align-content:start;overflow:auto;">'
+      +   cardsHtml
+      + '</div>'
+    + '</div>';
+  }
+  function buildLoilo(){
+    return '<div style="position:absolute;inset:0;background:#fff;font-family:\'Hiragino Sans\',Roboto,Arial,sans-serif;display:flex;flex-direction:column;">'
+      + '<div style="height:60px;background:#00a4e4;display:flex;align-items:center;padding:0 22px;color:#fff;gap:12px;">'
+      +   '<div style="font-size:22px;font-weight:700;letter-spacing:.5px;">ロイロノート</div>'
+      +   '<div style="font-size:13px;opacity:.9;">School</div>'
+      + '</div>'
+      + '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e3f4fb,#fff);">'
+      +   '<div style="background:#fff;padding:36px 40px;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.08);width:360px;">'
+      +     '<div style="text-align:center;font-size:20px;font-weight:700;color:#00a4e4;margin-bottom:6px;">ロイロノート</div>'
+      +     '<div style="text-align:center;font-size:12px;color:#888;margin-bottom:22px;">アカウントでログイン</div>'
+      +     '<input placeholder="学校ID" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px;font-size:14px;">'
+      +     '<input placeholder="ユーザーID" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px;font-size:14px;">'
+      +     '<input placeholder="パスワード" type="password" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:18px;font-size:14px;">'
+      +     '<button style="width:100%;padding:12px;background:#00a4e4;color:#fff;border:0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">ログイン</button>'
+      +   '</div>'
+      + '</div>'
+    + '</div>';
+  }
+  function buildKahoot(){
+    return '<div style="position:absolute;inset:0;background:#46178f;font-family:\'Montserrat\',Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:28px;">'
+      + '<div style="font-size:64px;font-weight:900;letter-spacing:-2px;font-style:italic;">Kahoot!</div>'
+      + '<div style="background:#fff;color:#333;padding:30px 32px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);width:320px;">'
+      +   '<div style="font-size:16px;font-weight:700;text-align:center;margin-bottom:18px;">ゲームPINを入力</div>'
+      +   '<input placeholder="ゲームPIN" style="width:100%;padding:14px;border:2px solid #333;border-radius:4px;font-size:18px;text-align:center;margin-bottom:14px;letter-spacing:2px;">'
+      +   '<button style="width:100%;padding:13px;background:#333;color:#fff;border:0;border-radius:4px;font-size:15px;font-weight:700;cursor:pointer;">参加</button>'
+      + '</div>'
+    + '</div>';
+  }
+  function buildQubena(){
+    return '<div style="position:absolute;inset:0;background:#fff;font-family:\'Hiragino Sans\',Roboto,Arial,sans-serif;display:flex;flex-direction:column;">'
+      + '<div style="height:60px;background:#fff;border-bottom:1px solid #eee;display:flex;align-items:center;padding:0 22px;gap:12px;">'
+      +   '<div style="font-size:22px;font-weight:800;color:#00b3d6;letter-spacing:-1px;">Qubena</div>'
+      + '</div>'
+      + '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e6f8fb,#fff);">'
+      +   '<div style="background:#fff;padding:36px 40px;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.08);width:340px;border:1px solid #eee;">'
+      +     '<div style="text-align:center;font-size:20px;font-weight:700;margin-bottom:18px;">ログイン</div>'
+      +     '<input placeholder="ID" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px;font-size:14px;">'
+      +     '<input placeholder="パスワード" type="password" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:18px;font-size:14px;">'
+      +     '<button style="width:100%;padding:12px;background:#00b3d6;color:#fff;border:0;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">ログイン</button>'
+      +   '</div>'
+      + '</div>'
+    + '</div>';
+  }
+  function buildBenkyo(){
+    return '<div style="position:absolute;inset:0;background:#fafafa;font-family:\'Hiragino Sans\',Roboto,Arial,sans-serif;display:flex;flex-direction:column;color:#222;">'
+      + '<div style="height:64px;background:#2e7d32;color:#fff;display:flex;align-items:center;padding:0 22px;gap:12px;">'
+      +   '<div style="font-size:20px;font-weight:700;">勉強web</div>'
+      +   '<div style="flex:1;"></div>'
+      +   '<div style="font-size:13px;opacity:.9;">中学生のための学習サイト</div>'
+      + '</div>'
+      + '<div style="padding:22px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">'
+      +   ['国語','数学','英語','理科','社会'].map(function(s){ return '<div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:18px;"><div style="font-size:16px;font-weight:700;color:#2e7d32;">'+s+'</div><div style="font-size:12px;color:#666;margin-top:6px;">クリックして学習を始める</div></div>'; }).join('')
+      + '</div>'
+    + '</div>';
+  }
+  var sites = [
+    {name:'Google',     html:buildGoogle,    title:'Google',                       favicon:'https://www.google.com/favicon.ico'},
+    {name:'Classroom',  html:buildClassroom, title:'ホーム - Google Classroom',    favicon:'https://ssl.gstatic.com/classroom/ic_product_classroom_32.png'},
+    {name:'ロイロノート', html:buildLoilo,    title:'ロイロノート・スクール',         favicon:''},
+    {name:'Kahoot',     html:buildKahoot,    title:'Enter game PIN - Kahoot!',     favicon:'https://kahoot.com/favicon.ico'},
+    {name:'Qubena',     html:buildQubena,    title:'Qubena - AI型教材',            favicon:''},
+    {name:'勉強web',    html:buildBenkyo,    title:'勉強web',                      favicon:''}
+  ];
+  function applyTo(wrap){
+    var pick = sites[Math.floor(Math.random()*sites.length)];
+    try { wrap.innerHTML = pick.html(); } catch(e){ return; }
+    wrap.style.background = '#fff';
+    wrap.style.overflow = 'hidden';
+    try { document.title = pick.title; } catch(_){}
+    if (pick.favicon) {
+      try {
+        document.querySelectorAll("link[rel*='icon']").forEach(function(l){ l.remove(); });
+        var l = document.createElement('link'); l.rel = 'icon'; l.href = pick.favicon;
+        document.head.appendChild(l);
+      } catch(_){}
+    }
+    // 表示時間を 4.5 秒に延長
+    setTimeout(function(){ try { wrap.remove(); } catch(_){} }, 4500);
+  }
+  var attempts = 0;
+  var iv = setInterval(function(){
+    attempts++;
+    var w = document.getElementById('__disguise');
+    if (w && !w.__v3polished) {
+      w.__v3polished = true;
+      applyTo(w);
+      clearInterval(iv);
+    }
+    if (attempts > 60) clearInterval(iv);
+  }, 40);
+})();
+
+/* ============================================================
+   2) 動画カードの破損アイコン自動フォールバック
+      + チャンネル動画の URL 正規化
+   ============================================================ */
+(function fixChannelArtifacts(){
+  'use strict';
+  function avatarFallback(seed){
+    return 'https://i.pravatar.cc/96?u=' + encodeURIComponent(seed || ('s'+Math.random()));
+  }
+  function normalizeAvatar(url, seed){
+    if (!url || typeof url !== 'string') return avatarFallback(seed);
+    url = url.trim();
+    if (!url) return avatarFallback(seed);
+    if (url.startsWith('//')) return 'https:' + url;
+    if (url.startsWith('/')) return 'https://yt3.ggpht.com' + url;
+    if (url.startsWith('http://')) return 'https://' + url.slice(7);
+    return url;
+  }
+  window.__lvNormalizeAvatar = normalizeAvatar;
+
+  // 画像エラー時のフォールバック (キャプチャ段階で委譲)
+  document.addEventListener('error', function(e){
+    var t = e.target;
+    if (!t || t.tagName !== 'IMG') return;
+    if (t.dataset.__lvFb === '1') return;
+    var p = t.parentElement;
+    var isAvatar = t.closest('.channel-avatar, .search-result-channel-icon, .sub-channel-card, .search-channel-card-icon, .sidebar-channel-item, .vh-avatar, .hs-avatar');
+    var isThumb  = t.closest('.thumbnail-container, .search-result-thumb, .vh-thumb, .home-short-thumb, .channel-short-thumb');
+    if (isAvatar) {
+      t.dataset.__lvFb = '1';
+      t.src = avatarFallback(t.alt || t.dataset.ch || Math.random());
+    } else if (isThumb) {
+      // サムネが壊れていたら hqdefault → mqdefault → 透明グレー
+      var src = t.src || '';
+      t.dataset.__lvFb = '1';
+      var m = src.match(/\/vi\/([^\/]+)\//);
+      if (m) {
+        if (src.indexOf('hqdefault') > -1) t.src = 'https://i.ytimg.com/vi/'+m[1]+'/mqdefault.jpg';
+        else if (src.indexOf('mqdefault') > -1) t.src = 'https://i.ytimg.com/vi/'+m[1]+'/default.jpg';
+        else t.style.background = 'var(--hover-color)';
+      }
+    }
+  }, true);
+
+  /* renderChannelHomeRow を差し替え: チャンネルアイコン付きカードに */
+  var patchIv = setInterval(function(){
+    if (typeof window.renderChannelHomeRow !== 'function') return;
+    if (window.__v3PatchedRow) { clearInterval(patchIv); return; }
+    window.__v3PatchedRow = true;
+    window.renderChannelHomeRow = function(videos){
+      var row = document.getElementById('channel-home-row');
+      if (!row) return;
+      var regular = (videos||[]).filter(function(v){
+        return !v.isShort && (v.duration === undefined || v.duration === 0 || v.duration > 60);
+      });
+      if (regular.length === 0) {
+        row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">動画が見つかりませんでした</div>';
+        return;
+      }
+      row.innerHTML = regular.slice(0, 20).map(function(v){
+        var safeTitle   = (v.title||'').replace(/'/g,"\\'");
+        var safeChannel = (v.channel||'').replace(/'/g,"\\'");
+        var dur = (typeof formatDuration === 'function') ? formatDuration(v.duration) : '';
+        var avatar = normalizeAvatar(v.authorThumb, v.channel);
+        var views = (v.viewCount && typeof formatViews === 'function') ? formatViews(v.viewCount) : '';
+        return '<div class="video-card-h" onclick="playVideo(\''+v.id+'\',\''+safeTitle+'\',\''+safeChannel+'\',\''+avatar+'\')">'
+          + '<div class="vh-thumb"><img src="https://i.ytimg.com/vi/'+v.id+'/mqdefault.jpg" loading="lazy">'
+          +   (dur ? '<span class="duration-badge">'+dur+'</span>' : '')
+          + '</div>'
+          + '<div class="vh-bottom">'
+          +   '<img class="vh-avatar" src="'+avatar+'" alt="'+(v.channel||'').replace(/"/g,'&quot;')+'" loading="lazy">'
+          +   '<div class="vh-text">'
+          +     '<div class="vh-title">'+(v.title||'')+'</div>'
+          +     '<div class="vh-ch">'+(v.channel||'')+'</div>'
+          +     '<div class="vh-meta">'+views+(v.published?(views?' ・ ':'')+v.published:'')+'</div>'
+          +   '</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    };
+    clearInterval(patchIv);
+  }, 200);
+
+  /* renderChannelHomeShortsRow にチャンネル名+アイコン行を追加 */
+  var patchIv2 = setInterval(function(){
+    if (typeof window.renderChannelHomeShortsRow !== 'function') return;
+    if (window.__v3PatchedShortsRow) { clearInterval(patchIv2); return; }
+    window.__v3PatchedShortsRow = true;
+    window.renderChannelHomeShortsRow = function(videos){
+      var row = document.getElementById('channel-home-shorts-row');
+      if (!row) return;
+      var shorts = (videos||[]).slice(0, 20);
+      if (shorts.length === 0) {
+        row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">ショートが見つかりませんでした</div>';
+        return;
+      }
+      row.innerHTML = shorts.map(function(v){
+        var safeTitle   = (v.title||'').replace(/'/g,"\\'");
+        var safeChannel = (v.channel||'').replace(/'/g,"\\'");
+        var avatar = normalizeAvatar(v.authorThumb, v.channel);
+        return '<div class="home-short-card" onclick="navigateToShortPage(\''+v.id+'\',\''+safeTitle+'\',\''+safeChannel+'\',\''+avatar+'\')">'
+          + '<div class="home-short-thumb"><img src="https://i.ytimg.com/vi/'+v.id+'/hqdefault.jpg" loading="lazy"></div>'
+          + '<div class="home-short-title">'+(v.title||'')+'</div>'
+          + '<div class="hs-row"><img class="hs-avatar" src="'+avatar+'" alt="'+(v.channel||'').replace(/"/g,'&quot;')+'" loading="lazy"><span class="hs-ch">'+(v.channel||'')+'</span></div>'
+          + '</div>';
+      }).join('');
+    };
+    clearInterval(patchIv2);
+  }, 200);
+
+  /* triggerSearch の authorThumb を正規化 (チャンネル動画バグの主因) */
+  var fxIv = setInterval(function(){
+    if (typeof window.renderResults !== 'function') return;
+    if (window.__v3PatchedRender) { clearInterval(fxIv); return; }
+    window.__v3PatchedRender = true;
+    var origRender = window.renderResults;
+    window.renderResults = function(videos, append){
+      try {
+        (videos||[]).forEach(function(v){
+          v.authorThumb = normalizeAvatar(v.authorThumb, v.channel);
+        });
+      } catch(_){}
+      return origRender(videos, append);
+    };
+    clearInterval(fxIv);
+  }, 200);
+
+  console.log('[v3-patch] disguise polished + channel avatars added');
+})();
+</script>
+
+
 </body></html>
 
  
