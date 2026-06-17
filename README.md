@@ -5,5 +5,5 @@
 **github pages用ファイルの作成** <br> **ファイルのリファクタ**
 ## 6/5
 **バグ修正..?public/index.html.txtに一つのhtml版設置**
-## 6/16
+## 6/17
 Html更新 chocoさんお願いします
