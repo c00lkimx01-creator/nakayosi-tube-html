@@ -1854,24 +1854,95 @@ async function fetchChannelVideos(channelName, page = 1) {
   if (!vData) return { videos: [], channelInfo: channel };
   return { videos: vData.videos || [], channelInfo: channel };
 }
-async function fetchChannelShortsMultiPage(channelName, startPage = 1) {
+// チャンネルIDをセッション内でキャッシュ（Shorts再取得を高速化）
+window.__channelIdCache = window.__channelIdCache || new Map();
+async function _resolveChannelId(channelName) {
+  const key = (channelName||'').toLowerCase();
+  if (window.__channelIdCache.has(key)) return window.__channelIdCache.get(key);
+  // 既にcharUC形式（UCxxxx）ならそのまま使う
+  if (/^UC[A-Za-z0-9_-]{20,}$/.test(channelName)) {
+    const obj = { authorId: channelName, author: channelName };
+    window.__channelIdCache.set(key, obj); return obj;
+  }
   const channel = await _raceInstances(
     inst => `${inst}/api/v1/search?q=${encodeURIComponent(channelName)}&type=channel&page=1`,
-    { timeout: 9000, validator: d => { const c = _pickBestChannel(d, channelName); return (c && c.authorId) ? c : null; } }
+    { timeout: 7000, validator: d => { const c = _pickBestChannel(d, channelName); return (c && c.authorId) ? c : null; } }
   );
+  if (channel) window.__channelIdCache.set(key, channel);
+  return channel;
+}
+function _normalizeChannelShort(v, channelName) {
+  return {
+    id: v.videoId,
+    title: v.title || '',
+    channel: v.author || channelName,
+    isShort: true,
+    authorThumb: (v.authorThumbnails && v.authorThumbnails[0]) ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||channelName)}`,
+    duration: v.lengthSeconds || 0,
+    published: v.publishedText || '',
+    viewCount: v.viewCount || 0
+  };
+}
+// チャンネルShortsキャッシュ（5分）
+window.__channelShortsCache = window.__channelShortsCache || new Map();
+async function fetchChannelShortsMultiPage(channelName, startPage = 1) {
+  const channel = await _resolveChannelId(channelName);
   if (!channel) return { shorts: [], hasMore: false };
   const channelId = channel.authorId;
-  const pagesToFetch = [startPage, startPage+1, startPage+2];
-  const pageResults = await Promise.all(pagesToFetch.map(page =>
+  const cacheKey = channelId + ':' + startPage;
+  const cached = window.__channelShortsCache.get(cacheKey);
+  if (cached && (Date.now() - cached.t) < 5*60*1000) {
+    return { shorts: cached.shorts, hasMore: cached.hasMore };
+  }
+  const seen = new Set();
+  const collect = (arr) => {
+    const out = [];
+    if (!Array.isArray(arr)) return out;
+    for (const v of arr) {
+      if (!v || !v.videoId || seen.has(v.videoId)) continue;
+      seen.add(v.videoId);
+      out.push(v);
+    }
+    return out;
+  };
+  // ① Invidiousの専用 /shorts エンドポイントを最優先で叩く（最速・確実）
+  // ② 同時に通常 /videos も page範囲で並列取得（lengthSeconds<=61 のものをShorts扱い）
+  const shortsTasks = [startPage, startPage+1, startPage+2].map(page =>
+    _raceInstances(
+      inst => `${inst}/api/v1/channels/${channelId}/shorts?page=${page}`,
+      { timeout: 8000, validator: d => {
+          const v = (d && Array.isArray(d.videos)) ? d.videos : (Array.isArray(d) ? d : null);
+          return (v && v.length > 0) ? v : null;
+      }}
+    ).catch(()=>null)
+  );
+  const videoTasks = [startPage, startPage+1, startPage+2].map(page =>
     _raceInstances(
       inst => `${inst}/api/v1/channels/${channelId}/videos?page=${page}`,
-      { timeout: 9000, validator: d => (d && Array.isArray(d.videos) && d.videos.length > 0) ? d.videos : null }
-    )
-  ));
-  const allVideos = [];
-  pageResults.forEach(arr => { if (Array.isArray(arr)) allVideos.push(...arr); });
-  const shorts = allVideos.filter(v => v.lengthSeconds > 0 && v.lengthSeconds <= 61).map(v => ({ id: v.videoId, title: v.title||'', channel: v.author || channelName, isShort: true, authorThumb: v.authorThumbnails ? v.authorThumbnails[0].url : `https://i.pravatar.cc/150?u=${encodeURIComponent(v.author||channelName)}`, duration: v.lengthSeconds, published: v.publishedText||'', viewCount: v.viewCount||0 }));
-  return { shorts, hasMore: allVideos.length >= 20 };
+      { timeout: 8000, validator: d => {
+          const v = (d && Array.isArray(d.videos)) ? d.videos : (Array.isArray(d) ? d : null);
+          return (v && v.length > 0) ? v : null;
+      }}
+    ).catch(()=>null)
+  );
+  const [shortsRes, videoRes] = await Promise.all([
+    Promise.all(shortsTasks),
+    Promise.all(videoTasks)
+  ]);
+  const dedupedShortsFromShortsEp = [];
+  shortsRes.forEach(arr => { collect(arr).forEach(v => dedupedShortsFromShortsEp.push(v)); });
+  const fromVideos = [];
+  videoRes.forEach(arr => {
+    collect(arr).forEach(v => {
+      if (v.lengthSeconds > 0 && v.lengthSeconds <= 61) fromVideos.push(v);
+    });
+  });
+  // Shorts専用エンドポイントの結果は無条件Shorts扱い、加えて videos からの短尺もマージ
+  const merged = [...dedupedShortsFromShortsEp, ...fromVideos];
+  const shorts = merged.map(v => _normalizeChannelShort(v, channelName));
+  const hasMore = (dedupedShortsFromShortsEp.length + fromVideos.length) >= 10;
+  window.__channelShortsCache.set(cacheKey, { t: Date.now(), shorts, hasMore });
+  return { shorts, hasMore };
 }
 // =================== CSE ===================
 window.__gcse = {
@@ -2173,20 +2244,38 @@ async function fetchHomeRowVideos() {
   wrap.classList.remove('hidden');
 }
 async function fetchShortsForSearch(query) {
-  const data = await fetchFromInvidious(query + ' #shorts',"shorts",1);
-  if (data && data.length > 0) {
-    const shorts = data.filter(v => v.videoId && v.lengthSeconds > 0 && v.lengthSeconds <= 61).slice(0,8);
-    if (shorts.length === 0) return;
-    const container = document.getElementById('search-shorts-container');
+  const container = document.getElementById('search-shorts-container');
+  const section = document.getElementById('search-shorts-section');
+  if (!container || !section) return;
+  // 複数クエリを並列race。最速で来たものから随時描画。
+  const queries = [query + ' #shorts', query + ' shorts', '#shorts ' + query, query];
+  const seen = new Set();
+  let collected = [];
+  let shown = false;
+  const renderNow = () => {
     container.innerHTML = '';
-    shorts.forEach(v => {
+    collected.slice(0, 12).forEach(v => {
       const div = document.createElement('div'); div.className = 'home-short-card';
       div.onclick = () => navigateToShortPage(v.videoId, v.title, v.author, v.authorThumbnails?.[0]?.url);
       div.innerHTML = `<div class="home-short-thumb"><img src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg" loading="lazy" decoding="async"></div><div class="home-short-title">${v.title}</div>`;
       container.appendChild(div);
     });
-    document.getElementById('search-shorts-section').classList.remove('hidden');
-  }
+    section.classList.remove('hidden');
+  };
+  const tasks = queries.map(q => fetchFromInvidious(q, "shorts", 1).then(data => {
+    if (!data || !data.length) return;
+    let added = 0;
+    for (const v of data) {
+      if (!v || !v.videoId || seen.has(v.videoId)) continue;
+      if (!(v.lengthSeconds > 0 && v.lengthSeconds <= 61)) continue;
+      seen.add(v.videoId); collected.push(v); added++;
+    }
+    if (added > 0) {
+      if (!shown) { shown = true; renderNow(); }
+      else renderNow();
+    }
+  }).catch(()=>null));
+  await Promise.all(tasks);
 }
 function navigateToShortPage(videoId, title, channel, thumb, noHistory = false) {
   navigate('shorts', { videoId, title, channel, thumb, noHistory });
@@ -2510,7 +2599,12 @@ function renderChannelHomeRow(videos) {
   if (!row) return;
   // 通常動画のみ (Shortsを除外)
   const regular = videos.filter(v => !v.isShort && (v.duration === undefined || v.duration === 0 || v.duration > 60));
-  if (regular.length === 0) { row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">動画が見つかりませんでした</div>'; return; }
+  if (regular.length === 0) {
+    // 既にカードが描画済みなら、後から来た空応答で上書きしない
+    if (row.querySelector('.video-card-h')) return;
+    row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">動画が見つかりませんでした</div>';
+    return;
+  }
   row.innerHTML = regular.slice(0, 20).map(v => {
     const safeTitle = (v.title||'').replace(/'/g,"\\'");
     const safeChannel = (v.channel||'').replace(/'/g,"\\'");
@@ -2527,7 +2621,11 @@ function renderChannelHomeShortsRow(videos) {
   if (!row) return;
   // fetchChannelShortsMultiPageから来た動画はすべてShortsとして扱う
   const shorts = (videos||[]).slice(0, 20);
-  if (shorts.length === 0) { row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">ショートが見つかりませんでした</div>'; return; }
+  if (shorts.length === 0) {
+    if (row.querySelector('.home-short-card')) return;
+    row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">ショートが見つかりませんでした</div>';
+    return;
+  }
   row.innerHTML = shorts.map(v => {
     const safeTitle = (v.title||'').replace(/'/g,"\\'");
     const safeChannel = (v.channel||'').replace(/'/g,"\\'");
@@ -9297,6 +9395,7 @@ window.fetchExtraSearch = async function(query){
         return !v.isShort && (v.duration === undefined || v.duration === 0 || v.duration > 60);
       });
       if (regular.length === 0) {
+        if (row.querySelector('.video-card-h')) return;
         row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">動画が見つかりませんでした</div>';
         return;
       }
@@ -9334,6 +9433,7 @@ window.fetchExtraSearch = async function(query){
       if (!row) return;
       var shorts = (videos||[]).slice(0, 20);
       if (shorts.length === 0) {
+        if (row.querySelector('.home-short-card')) return;
         row.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">ショートが見つかりませんでした</div>';
         return;
       }
@@ -9625,4 +9725,1438 @@ window.fetchExtraSearch = async function(query){
   }, true);
 })();
 </script>
+
+<!-- ============================================================
+     v4 OVERRIDE PATCH  (ユーザー要望 一括対応 / 2026-06)
+     - Chromebook フリーズ対策 (重い setInterval を一掃)
+     - チャンネル channelId キャッシュ (2回目以降の取得失敗修正)
+     - siatube API 統合 (動画ストリーム/チャンネル/コメント/動画詳細)
+     - inv API フォールバック維持
+     - デフォルト画質設定
+     - 動画/ショート共通の再生パス
+     - スケルトンスクリーン
+     - ライト/ダーク/ガラス/シネマティックモード切替
+     - YouTube 風 short UI、右側コメント、フルスクリーン
+     - 検索/ホームの取得件数増 (10+)
+     - Google 偽装ページを指定 URL の HTML に差し替え
+     ============================================================ -->
+<style id="__v4_patch_css">
+/* ----- スケルトン ----- */
+@keyframes lvSkel { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+.lv-skel{background:linear-gradient(90deg, var(--hover-color,#222) 25%, rgba(255,255,255,.07) 50%, var(--hover-color,#222) 75%);background-size:200% 100%;animation:lvSkel 1.2s linear infinite;border-radius:8px;display:block;}
+.lv-skel-text{height:14px;margin:6px 0;border-radius:4px;}
+.lv-skel-avatar{width:36px;height:36px;border-radius:50%;}
+.lv-skel-thumb{width:100%;aspect-ratio:16/9;border-radius:12px;}
+.lv-skel-short{width:100%;aspect-ratio:9/16;border-radius:12px;}
+.lv-skel-card{display:flex;flex-direction:column;gap:8px;}
+.lv-skel-card .lv-skel-row{display:flex;gap:10px;align-items:flex-start;}
+
+/* ----- ライトモード ----- */
+html[data-lv-theme="light"]{
+  --bg-color:#ffffff; --text-color:#0f0f0f; --text-secondary:#606060;
+  --hover-color:#f2f2f2; --chip-bg:#f2f2f2; --border-color:#e5e5e5;
+  --primary-color:#065fd4; --header-bg:#ffffff; --sidebar-bg:#ffffff;
+  background:#fff; color:#0f0f0f;
+}
+html[data-lv-theme="light"] body{background:#fff;color:#0f0f0f;}
+html[data-lv-theme="light"] header,html[data-lv-theme="light"] .sidebar,html[data-lv-theme="light"] .categories-bar{background:#fff !important;color:#0f0f0f !important;}
+html[data-lv-theme="light"] .video-title,html[data-lv-theme="light"] .related-title{color:#0f0f0f !important;}
+
+/* ----- ガラスモード ----- */
+html[data-lv-glass="on"] header,
+html[data-lv-glass="on"] .sidebar,
+html[data-lv-glass="on"] .categories-bar,
+html[data-lv-glass="on"] .stream-panel,
+html[data-lv-glass="on"] .quality-panel,
+html[data-lv-glass="on"] .download-panel,
+html[data-lv-glass="on"] .share-panel,
+html[data-lv-glass="on"] #lv-short-comments-panel{
+  background:rgba(20,20,20,.55) !important;
+  backdrop-filter:blur(18px) saturate(150%);
+  border:1px solid rgba(255,255,255,.12) !important;
+}
+html[data-lv-theme="light"][data-lv-glass="on"] header,
+html[data-lv-theme="light"][data-lv-glass="on"] .sidebar,
+html[data-lv-theme="light"][data-lv-glass="on"] .categories-bar{
+  background:rgba(255,255,255,.55) !important;
+  backdrop-filter:blur(18px) saturate(160%);
+  border:1px solid rgba(0,0,0,.08) !important;
+}
+html[data-lv-glass="on"] .video-card,
+html[data-lv-glass="on"] .related-video{
+  background:rgba(255,255,255,.04);
+  backdrop-filter:blur(8px);
+  border-radius:14px;
+}
+
+/* ----- シネマティックモード ----- */
+html[data-lv-cinema="on"] #view-watch::before{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:radial-gradient(60% 60% at 50% 30%, rgba(255,80,80,.18), transparent 60%),
+             radial-gradient(60% 60% at 50% 70%, rgba(80,120,255,.18), transparent 60%);
+  filter:blur(60px); opacity:.9; transition:opacity .6s;
+}
+html[data-lv-cinema="on"] .video-player-container,
+html[data-lv-cinema="on"] #player-wrapper{
+  box-shadow:0 0 120px rgba(255,80,80,.18), 0 0 80px rgba(80,120,255,.18);
+}
+
+/* ----- YouTube 風 short ボタン ----- */
+.short-action-btn.lv-yt{display:flex;flex-direction:column;align-items:center;gap:4px;background:transparent;border:0;color:#fff;cursor:pointer;}
+.short-action-btn.lv-yt .lv-btn-circle{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;transition:background .15s;}
+.short-action-btn.lv-yt:hover .lv-btn-circle{background:rgba(255,255,255,.25);}
+.short-action-btn.lv-yt .lv-btn-circle svg{width:24px;height:24px;fill:#fff;}
+.short-action-btn.lv-yt .lv-btn-label{font-size:12px;font-weight:600;text-shadow:0 0 2px rgba(0,0,0,.6);}
+
+/* ----- 右側スライドショートコメント ----- */
+#lv-short-comments-panel{position:fixed;top:0;right:-440px;width:420px;max-width:95vw;height:100vh;background:#181818;color:#fff;z-index:9999;box-shadow:-8px 0 32px rgba(0,0,0,.5);transition:right .25s ease;display:flex;flex-direction:column;border-left:1px solid rgba(255,255,255,.08);}
+#lv-short-comments-panel.open{right:0;}
+#lv-short-comments-panel .lv-sc-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);font-weight:700;}
+#lv-short-comments-panel .lv-sc-close{background:transparent;border:0;color:#fff;font-size:24px;cursor:pointer;line-height:1;}
+#lv-short-comments-panel .lv-sc-body{flex:1;overflow-y:auto;padding:14px 18px;}
+html[data-lv-theme="light"] #lv-short-comments-panel{background:#fff;color:#0f0f0f;}
+
+/* ----- ホームレイアウト (3列推薦 / shorts 横帯 / 3列通常) ----- */
+.lv-home-rec-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;}
+.lv-home-shorts-row{display:flex;gap:12px;overflow-x:auto;padding:8px 4px 12px;scroll-snap-type:x mandatory;}
+.lv-home-shorts-row > *{flex:0 0 180px;scroll-snap-align:start;}
+.lv-home-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+@media (max-width: 900px){.lv-home-rec-row,.lv-home-grid{grid-template-columns:repeat(2,1fr);} .lv-home-shorts-row > *{flex-basis:150px;}}
+@media (max-width: 560px){.lv-home-rec-row,.lv-home-grid{grid-template-columns:1fr;}}
+
+/* ----- 設定パネル拡張 ----- */
+.lv-settings-card{background:var(--hover-color);border-radius:12px;padding:14px 16px;margin-bottom:12px;}
+.lv-settings-card h3{margin:0 0 10px;font-size:14px;font-weight:700;}
+.lv-settings-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;gap:12px;}
+.lv-toggle{position:relative;display:inline-block;width:42px;height:24px;}
+.lv-toggle input{opacity:0;width:0;height:0;}
+.lv-toggle-slider{position:absolute;cursor:pointer;inset:0;background:#555;border-radius:24px;transition:.2s;}
+.lv-toggle-slider:before{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.2s;}
+.lv-toggle input:checked + .lv-toggle-slider{background:#3ea6ff;}
+.lv-toggle input:checked + .lv-toggle-slider:before{transform:translateX(18px);}
+.lv-select{background:var(--bg-color);color:var(--text-color);border:1px solid var(--border-color);border-radius:8px;padding:6px 10px;}
+</style>
+<script>
+/* ===========================================================
+   v4 OVERRIDE PATCH SCRIPT
+   =========================================================== */
+(function(){
+  'use strict';
+  var SIATUBE = 'https://siatube.com';
+  var OMADA   = 'https://yt.omada.cafe';
+
+  /* ---------- ユーティリティ ---------- */
+  function $(sel, root){ return (root||document).querySelector(sel); }
+  function $$(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
+  function readCfg(){ try { return JSON.parse(localStorage.getItem('study2525_config')||'{}'); } catch(_){ return {}; } }
+  function writeCfg(c){ try { localStorage.setItem('study2525_config', JSON.stringify(c)); } catch(_){} }
+  function fetchJSON(url, ms){
+    ms = ms || 6000;
+    var ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? { signal: AbortSignal.timeout(ms) } : {};
+    return fetch(url, ctrl).then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); });
+  }
+  window.__lvFetchJSON = fetchJSON;
+
+  /* ---------- Chromebook フリーズ対策 ----------
+     既存パッチの setInterval(...,1000) を一掃 (homeBtn 削除/dedupe など)
+     1分に1回程度に間引く + requestIdleCallback で */
+  (function killHeavyIntervals(){
+    var origSet = window.setInterval;
+    window.setInterval = function(fn, ms){
+      if (typeof ms === 'number' && ms > 0 && ms < 2000) {
+        // ホットなインターバルは 5 秒以上に
+        ms = Math.max(ms, 5000);
+      }
+      return origSet.call(window, fn, ms);
+    };
+  })();
+
+  /* ---------- スケルトンヘルパー ---------- */
+  window.lvSkeleton = {
+    grid: function(count, type){
+      count = count || 9; type = type || 'video';
+      var thumb = type === 'short' ? 'lv-skel-short' : 'lv-skel-thumb';
+      var html = '';
+      for (var i=0;i<count;i++){
+        html += '<div class="lv-skel-card"><span class="lv-skel '+thumb+'"></span>'
+              + '<div class="lv-skel-row"><span class="lv-skel lv-skel-avatar"></span>'
+              + '<div style="flex:1;"><span class="lv-skel lv-skel-text" style="width:90%"></span>'
+              + '<span class="lv-skel lv-skel-text" style="width:60%"></span></div></div></div>';
+      }
+      return html;
+    },
+    comments: function(count){
+      count = count || 4; var html='';
+      for (var i=0;i<count;i++){
+        html += '<div style="display:flex;gap:10px;margin-bottom:14px;"><span class="lv-skel lv-skel-avatar"></span>'
+              + '<div style="flex:1"><span class="lv-skel lv-skel-text" style="width:30%"></span>'
+              + '<span class="lv-skel lv-skel-text" style="width:90%"></span>'
+              + '<span class="lv-skel lv-skel-text" style="width:60%"></span></div></div>';
+      }
+      return html;
+    }
+  };
+
+  /* ---------- siatube API ラッパ ---------- */
+  var sia = window.lvSia = {
+    video: function(id){ return fetchJSON(SIATUBE + '/api/video/' + id, 6000); },
+    stream: function(id){ return fetchJSON(SIATUBE + '/api/stream/' + id, 6000); },
+    channel: function(channelId){ return fetchJSON(SIATUBE + '/api/channel/' + channelId, 6000); },
+    comments: function(id){ return fetchJSON(SIATUBE + '/api/comments?videoId=' + encodeURIComponent(id), 6000); }
+  };
+
+  /* ---------- channelId キャッシュ (登録チャンネル 2回目バグ対策) ---------- */
+  function chCacheGet(name){ try { return JSON.parse(localStorage.getItem('lv_channelId_cache')||'{}')[name]; } catch(_){ return null; } }
+  function chCacheSet(name, id){
+    try {
+      var m = JSON.parse(localStorage.getItem('lv_channelId_cache')||'{}');
+      m[name] = { id:id, ts:Date.now() };
+      localStorage.setItem('lv_channelId_cache', JSON.stringify(m));
+    } catch(_){}
+  }
+  async function resolveChannelId(name){
+    if (!name) return null;
+    var c = chCacheGet(name);
+    if (c && c.id && (Date.now()-c.ts) < 24*3600*1000) return c.id;
+    // 1) inv search (race)
+    try {
+      var inst = (window.INVIDIOUS_INSTANCES || [OMADA]);
+      for (var i=0;i<Math.min(inst.length,5);i++){
+        try {
+          var data = await fetchJSON(inst[i]+'/api/v1/search?q='+encodeURIComponent(name)+'&type=channel&page=1', 4000);
+          var pick = (typeof window._pickBestChannel === 'function') ? window._pickBestChannel(data, name) : (Array.isArray(data) && data.find(function(x){ return x.authorId; }));
+          if (pick && pick.authorId){ chCacheSet(name, pick.authorId); return pick.authorId; }
+        } catch(_){}
+      }
+    } catch(_){}
+    return null;
+  }
+  window.__lvResolveChannelId = resolveChannelId;
+
+  /* ---------- fetchChannelVideos / Shorts 上書き ---------- */
+  var _origFetchChannelVideos = window.fetchChannelVideos;
+  window.fetchChannelVideos = async function(channelName, page){
+    page = page || 1;
+    var chId = await resolveChannelId(channelName);
+    if (chId){
+      var inst = (window.INVIDIOUS_INSTANCES || [OMADA]).slice(0,5);
+      for (var i=0;i<inst.length;i++){
+        try {
+          var d = await fetchJSON(inst[i]+'/api/v1/channels/'+chId+'/videos?page='+page, 6000);
+          var arr = (d && d.videos) || (Array.isArray(d) ? d : (d && d.latestVideos)) || [];
+          if (arr.length) return { videos: arr, channelInfo: { authorId: chId, author: channelName } };
+        } catch(_){}
+      }
+      // siatube フォールバック
+      try {
+        var sd = await sia.channel(chId);
+        var v = (sd && (sd.videos || sd.latestVideos)) || [];
+        if (v.length) return { videos: v.map(function(x){
+          return { videoId: x.videoId || x.id, title: x.title, author: x.author||channelName, lengthSeconds: x.lengthSeconds||x.duration||0, viewCount: x.viewCount||0, publishedText: x.publishedText||x.published||'', authorThumbnails: x.authorThumbnails||[{url:''}] };
+        }), channelInfo: { authorId: chId, author: channelName } };
+      } catch(_){}
+    }
+    // 最終手段: 旧実装に委譲
+    if (typeof _origFetchChannelVideos === 'function'){
+      try { return await _origFetchChannelVideos(channelName, page); } catch(_){}
+    }
+    return { videos: [], channelInfo: null };
+  };
+
+  var _origFetchShortsMP = window.fetchChannelShortsMultiPage;
+  // 並列レース: 最初に空でない結果を返したインスタンスを採用
+  function _lvRaceFirstNonEmpty(urls, timeout){
+    return new Promise(function(resolve){
+      var remain = urls.length, settled = false;
+      if (!remain) return resolve(null);
+      urls.forEach(function(u){
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var to = setTimeout(function(){ try { ctrl && ctrl.abort(); } catch(_){} }, timeout||4500);
+        fetch(u, { signal: ctrl ? ctrl.signal : undefined }).then(function(r){
+          if (!r.ok) throw 0; return r.json();
+        }).then(function(j){
+          clearTimeout(to);
+          var arr = (j && (j.videos || j.shorts || j)) || [];
+          if (!settled && Array.isArray(arr) && arr.length){ settled = true; resolve({ data:j, arr:arr }); }
+          if (!--remain && !settled){ settled = true; resolve(null); }
+        }).catch(function(){
+          clearTimeout(to);
+          if (!--remain && !settled){ settled = true; resolve(null); }
+        });
+      });
+    });
+  }
+  window.fetchChannelShortsMultiPage = async function(channelName, startPage){
+    startPage = startPage || 1;
+    var chId = await resolveChannelId(channelName);
+    if (!chId && typeof _origFetchShortsMP === 'function'){
+      try { return await _origFetchShortsMP(channelName, startPage); } catch(_){}
+    }
+    if (!chId) return { shorts: [], hasMore: false };
+
+    var inst = (window.INVIDIOUS_INSTANCES || []).slice(0, 6);
+    if (!inst.length) inst = [(typeof OMADA !== 'undefined') ? OMADA : 'https://inv.nadeko.net'];
+    var pages = [startPage, startPage+1, startPage+2];
+    var collected = [];
+    var seen = {};
+
+    // 1) 専用 /shorts エンドポイント (並列レース)
+    await Promise.all(pages.map(async function(p){
+      var urls = inst.map(function(b){ return b+'/api/v1/channels/'+chId+'/shorts?page='+p; });
+      var r = await _lvRaceFirstNonEmpty(urls, 4500);
+      if (r && r.arr) r.arr.forEach(function(v){ var id=v.videoId||v.id; if (id && !seen[id]){ seen[id]=1; collected.push(v); } });
+    }));
+
+    // 2) /videos からショート長さで抽出 (足りない場合)
+    if (collected.length < 6){
+      await Promise.all(pages.map(async function(p){
+        var urls = inst.map(function(b){ return b+'/api/v1/channels/'+chId+'/videos?page='+p; });
+        var r = await _lvRaceFirstNonEmpty(urls, 4500);
+        if (r && r.arr) r.arr.forEach(function(v){
+          var id=v.videoId||v.id; var ls=v.lengthSeconds||v.duration||0;
+          if (id && !seen[id] && ls > 0 && ls <= 61){ seen[id]=1; collected.push(v); }
+        });
+      }));
+    }
+
+    // 3) siatube フォールバック
+    if (!collected.length){
+      try {
+        var sd = await sia.channel(chId);
+        var arr2 = (sd && (sd.shorts || sd.videos)) || [];
+        arr2.forEach(function(v){ var id=v.videoId||v.id; if (id && !seen[id]){ seen[id]=1; collected.push(v); } });
+      } catch(_){}
+    }
+
+    var shorts = collected.filter(function(v){
+      var ls = v.lengthSeconds || v.duration || 0;
+      // /shorts は length 0 のことがあるので許容
+      return ls === 0 || (ls > 0 && ls <= 61);
+    }).map(function(v){
+      return { id: v.videoId||v.id, title: v.title||'', channel: v.author||channelName, channelId: chId, isShort:true,
+        authorThumb: (v.authorThumbnails && v.authorThumbnails[0] && v.authorThumbnails[0].url) || ('https://i.pravatar.cc/150?u='+encodeURIComponent(channelName)),
+        duration: v.lengthSeconds||v.duration||0, published: v.publishedText||v.published||'', viewCount: v.viewCount||0,
+        publishedTimestamp: v.published||0 };
+    });
+    return { shorts: shorts, hasMore: collected.length >= 12 };
+  };
+  try { fetchChannelShortsMultiPage = window.fetchChannelShortsMultiPage; } catch(e){}
+
+  /* ---------- コメント siatube 優先 ---------- */
+  var _origFetchComments = window.fetchComments;
+  window.fetchComments = async function(videoId){
+    var container = document.getElementById('comments-container');
+    if (container) container.innerHTML = lvSkeleton.comments(5);
+    // 1) siatube
+    try {
+      var d = await sia.comments(videoId);
+      var arr = (d && (d.comments || d)) || [];
+      if (Array.isArray(arr) && arr.length){
+        document.getElementById('comment-count').innerText = arr.length;
+        container.innerHTML = arr.slice(0,30).map(function(c){
+          var avatar = c.avatar || (c.authorThumbnails && c.authorThumbnails[0] && c.authorThumbnails[0].url) || '';
+          var likes = c.likes || c.likeCount || 0;
+          var content = c.content || (c.contentHtml||'').replace(/<[^>]+>/g,'');
+          var author = c.author||'名無し';
+          return '<div class="comment"><img class="comment-avatar" src="'+avatar+'" onerror="this.src=\'https://i.pravatar.cc/40?u='+encodeURIComponent(author)+'\'"><div class="comment-body"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-weight:bold;font-size:13px;">'+author+'</span>'+(likes>0?'<span style="font-size:12px;color:var(--text-secondary);">👍 '+likes.toLocaleString()+'</span>':'')+'</div><div style="font-size:14px;line-height:1.5;">'+(content||'').replace(/\n/g,'<br>')+'</div></div></div>';
+        }).join('');
+        return;
+      }
+    } catch(_){}
+    // 2) 既存 inv 実装
+    if (typeof _origFetchComments === 'function'){
+      return _origFetchComments(videoId);
+    }
+  };
+
+  /* ---------- ストリーム取得: yt.omada.cafe + siatube /api/stream ---------- */
+  window.lvFetchStream = async function(videoId, preferredQuality){
+    preferredQuality = preferredQuality || (readCfg().defaultQuality || 'auto');
+    var result = { url: null, type: null, label: null, source: null, raw: null };
+    // 1) siatube /api/stream — HLS (高画質)
+    try {
+      var sd = await sia.stream(videoId);
+      if (sd){
+        // m3u8 候補を探す
+        var hls = sd.hls || sd.m3u8 || sd.hlsManifestUrl || sd.streamingData && sd.streamingData.hlsManifestUrl;
+        if (!hls && Array.isArray(sd.formats)){
+          var hit = sd.formats.find(function(f){ return /m3u8|application\/vnd\.apple\.mpegurl/.test((f.mimeType||f.type||'')) || /\.m3u8/.test(f.url||''); });
+          if (hit) hls = hit.url;
+        }
+        if (hls){ result = { url: hls, type: 'hls', label: preferredQuality, source: 'siatube', raw: sd }; return result; }
+        // 直接 mp4/url
+        if (sd.url) { result = { url: sd.url, type: 'mp4', label: 'auto', source:'siatube', raw: sd }; return result; }
+      }
+    } catch(_){}
+    // 2) yt.omada.cafe (Invidious)
+    try {
+      var inv = await fetchJSON(OMADA + '/api/v1/videos/' + videoId, 6000);
+      if (inv){
+        if (inv.hlsUrl){ return { url: inv.hlsUrl, type: 'hls', label: 'auto', source: 'omada', raw: inv }; }
+        var fmts = (inv.formatStreams||[]).concat(inv.adaptiveFormats||[]);
+        var pick = fmts.find(function(f){ return /720|1080/.test(String(f.qualityLabel||'')); }) || fmts[0];
+        if (pick && pick.url){ return { url: pick.url, type:'mp4', label: pick.qualityLabel||'auto', source:'omada', raw: inv }; }
+      }
+    } catch(_){}
+    return result;
+  };
+
+  /* ---------- 共通プレイヤー (動画/ショート両対応) ---------- */
+  window.lvUnifiedPlay = async function(opts){
+    // opts: { wrapper, videoId, mode:'video'|'short' }
+    var w = opts.wrapper; if (!w) return false;
+    var s = await lvFetchStream(opts.videoId);
+    if (!s.url) return false;
+    if (s.type === 'hls'){
+      w.innerHTML = '<video id="lv-uplayer" playsinline controls autoplay style="width:100%;height:100%;background:#000;'+(opts.mode==='short'?'object-fit:cover;':'')+'"></video>';
+      var vid = w.querySelector('#lv-uplayer');
+      if (window.Hls && window.Hls.isSupported()){
+        var hls = new Hls({ lowLatencyMode:true, enableWorker:true });
+        hls.loadSource(s.url); hls.attachMedia(vid);
+      } else if (vid.canPlayType('application/vnd.apple.mpegurl')){
+        vid.src = s.url;
+      } else { return false; }
+      return true;
+    } else if (s.type === 'mp4'){
+      w.innerHTML = '<video id="lv-uplayer" src="'+s.url+'" playsinline controls autoplay style="width:100%;height:100%;background:#000;'+(opts.mode==='short'?'object-fit:cover;':'')+'"></video>';
+      return true;
+    }
+    return false;
+  };
+
+  /* ---------- switchStream 拡張: Stream モードで siatube 優先 ---------- */
+  var _origSwitchStream = window.switchStream;
+  window.switchStream = async function(type){
+    if (type === 3 && window.currentVideoId){
+      var wrap = document.getElementById('player-wrapper');
+      if (wrap){
+        wrap.innerHTML = '<div class="lv-skel lv-skel-thumb" style="height:100%;border-radius:0;"></div>';
+        var ok = await lvUnifiedPlay({ wrapper: wrap, videoId: window.currentVideoId, mode:'video' });
+        if (ok){
+          try {
+            var c = readCfg(); c.stream = 3; writeCfg(c);
+          } catch(_){}
+          var lbl = document.getElementById('stream-label'); if (lbl) lbl.textContent = 'Stream';
+          return;
+        }
+      }
+    }
+    if (typeof _origSwitchStream === 'function') return _origSwitchStream(type);
+  };
+
+  /* ---------- ショート: フルスクリーン + 右側コメント ---------- */
+  function ensureSCPanel(){
+    var p = document.getElementById('lv-short-comments-panel');
+    if (p) return p;
+    p = document.createElement('div'); p.id = 'lv-short-comments-panel';
+    p.innerHTML = '<div class="lv-sc-header"><span>コメント</span><button class="lv-sc-close" onclick="lvCloseShortComments()">×</button></div><div class="lv-sc-body" id="lv-sc-body"></div>';
+    document.body.appendChild(p);
+    return p;
+  }
+  window.lvOpenShortComments = async function(videoId){
+    var p = ensureSCPanel(); p.classList.add('open');
+    var body = document.getElementById('lv-sc-body');
+    body.innerHTML = lvSkeleton.comments(6);
+    var arr = [];
+    try {
+      var d = await sia.comments(videoId);
+      arr = (d && (d.comments||d)) || [];
+    } catch(_){}
+    if (!arr.length){
+      for (var i=0;i<Math.min((window.INVIDIOUS_INSTANCES||[]).length,4);i++){
+        try {
+          var inv = await fetchJSON(window.INVIDIOUS_INSTANCES[i]+'/api/v1/comments/'+videoId, 5000);
+          if (inv && inv.comments && inv.comments.length){ arr = inv.comments; break; }
+        } catch(_){}
+      }
+    }
+    if (!arr.length){ body.innerHTML = '<div style="color:var(--text-secondary);padding:8px;">コメントを読み込めませんでした。</div>'; return; }
+    body.innerHTML = arr.slice(0,40).map(function(c){
+      var avatar = c.avatar || (c.authorThumbnails && c.authorThumbnails[0] && c.authorThumbnails[0].url) || '';
+      var author = c.author||'名無し';
+      var content = c.content || (c.contentHtml||'').replace(/<[^>]+>/g,'');
+      return '<div style="display:flex;gap:10px;margin-bottom:14px;"><img src="'+avatar+'" style="width:36px;height:36px;border-radius:50%;flex-shrink:0;background:#333;" onerror="this.src=\'https://i.pravatar.cc/36?u='+encodeURIComponent(author)+'\'"><div><div style="font-weight:bold;font-size:12px;margin-bottom:3px;">'+author+'</div><div style="font-size:13px;line-height:1.4;">'+(content||'').replace(/\n/g,'<br>')+'</div></div></div>';
+    }).join('');
+  };
+  window.lvCloseShortComments = function(){
+    var p = document.getElementById('lv-short-comments-panel'); if (p) p.classList.remove('open');
+  };
+  window.lvShortFullscreen = function(el){
+    var target = (el && el.closest('.short-item')) || document.querySelector('.short-item');
+    if (!target) return;
+    if (document.fullscreenElement) document.exitFullscreen();
+    else (target.requestFullscreen||target.webkitRequestFullscreen||function(){}).call(target);
+  };
+  // 既存ショートコメントを差し替え
+  window.openShortComments = function(videoId){ return lvOpenShortComments(videoId); };
+  window.closeShortComments = function(){ return lvCloseShortComments(); };
+
+  /* ---------- YouTube 風 short ボタンへ書き換え ---------- */
+  function rewriteShortButtons(){
+    $$('.short-actions:not([data-lv-yt])').forEach(function(box){
+      box.dataset.lvYt = '1';
+      // 既存ボタン要素にクラス追加 + アイコンを丸背景化
+      $$('.short-action-btn', box).forEach(function(btn){
+        btn.classList.add('lv-yt');
+        var icon = btn.querySelector('.icon, svg');
+        var label = btn.querySelector('.short-like-count, .short-action-label, span');
+        if (icon && !btn.querySelector('.lv-btn-circle')){
+          var circle = document.createElement('span'); circle.className='lv-btn-circle';
+          circle.appendChild(icon.cloneNode(true));
+          icon.remove();
+          btn.insertBefore(circle, btn.firstChild);
+        }
+        if (label && !label.classList.contains('lv-btn-label')) label.classList.add('lv-btn-label');
+      });
+      // フルスクリーンボタンを末尾に追加
+      if (!box.querySelector('.lv-fs-btn')){
+        var fs = document.createElement('button');
+        fs.className = 'short-action-btn lv-yt lv-fs-btn';
+        fs.title = 'フルスクリーン';
+        fs.innerHTML = '<span class="lv-btn-circle"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></span><span class="lv-btn-label">全画面</span>';
+        fs.onclick = function(e){ e.stopPropagation(); lvShortFullscreen(fs); };
+        box.appendChild(fs);
+      }
+    });
+  }
+  var _moTimer = null;
+  var mo = new MutationObserver(function(){
+    if (_moTimer) return;
+    _moTimer = setTimeout(function(){ _moTimer=null; rewriteShortButtons(); }, 200);
+  });
+  mo.observe(document.body, { childList:true, subtree:true });
+
+  /* ---------- ホーム: 3列推薦 / shorts帯 / 3列通常 ----------
+     既存 renderResults を傍受してホームコンテキストの時だけレイアウト調整 */
+  function applyHomeLayout(){
+    var home = document.getElementById('view-home') || document.getElementById('view-trend');
+    if (!home) return;
+    var grid = home.querySelector('.video-grid');
+    if (!grid || grid.dataset.lvHome === '1') return;
+    grid.dataset.lvHome = '1';
+    grid.classList.add('lv-home-grid');
+  }
+  setTimeout(applyHomeLayout, 600);
+  document.addEventListener('click', function(){ setTimeout(applyHomeLayout, 200); });
+
+  /* ---------- 検索/ホーム取得件数を増やす ---------- */
+  (function bumpFetchCounts(){
+    var origFSH = window.fetchShortsForHome;
+    if (typeof origFSH === 'function'){
+      window.fetchShortsForHome = function(){
+        try { window.HOME_SHORTS_LIMIT = 12; } catch(_){}
+        return origFSH.apply(this, arguments);
+      };
+    }
+    var origFSS = window.fetchShortsForSearch;
+    if (typeof origFSS === 'function'){
+      window.fetchShortsForSearch = function(){
+        try { window.SEARCH_SHORTS_LIMIT = 12; } catch(_){}
+        return origFSS.apply(this, arguments);
+      };
+    }
+  })();
+
+  /* ---------- スケルトン: 動画ロード時にビューへ挿入 ---------- */
+  var _origPlay = window.playVideo;
+  if (typeof _origPlay === 'function'){
+    window.playVideo = function(){
+      var pw = document.getElementById('player-wrapper');
+      if (pw) pw.innerHTML = '<div class="lv-skel lv-skel-thumb" style="height:100%;border-radius:0;"></div>';
+      var cc = document.getElementById('comments-container'); if (cc) cc.innerHTML = lvSkeleton.comments(4);
+      var rv = document.getElementById('related-videos'); if (rv) rv.innerHTML = lvSkeleton.grid(6,'video');
+      return _origPlay.apply(this, arguments);
+    };
+  }
+
+  /* ---------- 設定 UI: テーマ / ガラス / シネマ / デフォルト画質 ---------- */
+  function ensureSettingsUI(){
+    var view = document.getElementById('view-settings');
+    if (!view || view.querySelector('#lv-v4-settings')) return;
+    var box = document.createElement('div');
+    box.id = 'lv-v4-settings';
+    box.style.marginTop = '16px';
+    box.innerHTML =
+      '<div class="lv-settings-card"><h3>表示モード</h3>'
+      + '<div class="lv-settings-row"><span>テーマ</span>'
+      +   '<select class="lv-select" id="lv-theme-sel"><option value="dark">ダーク</option><option value="light">ライト</option></select>'
+      + '</div>'
+      + '<div class="lv-settings-row"><span>ガラスモード</span><label class="lv-toggle"><input type="checkbox" id="lv-glass-tog"><span class="lv-toggle-slider"></span></label></div>'
+      + '<div class="lv-settings-row"><span>シネマティックモード</span><label class="lv-toggle"><input type="checkbox" id="lv-cinema-tog"><span class="lv-toggle-slider"></span></label></div>'
+      + '</div>'
+      + '<div class="lv-settings-card"><h3>再生</h3>'
+      + '<div class="lv-settings-row"><span>Stream のデフォルト画質</span>'
+      +   '<select class="lv-select" id="lv-quality-sel">'
+      +     '<option value="auto">自動</option><option value="1080p">1080p</option><option value="720p">720p</option><option value="480p">480p</option><option value="360p">360p</option>'
+      +   '</select>'
+      + '</div></div>';
+    view.appendChild(box);
+    var cfg = readCfg();
+    var theme = cfg.lvTheme || 'dark';
+    var glass = !!cfg.lvGlass;
+    var cinema = !!cfg.lvCinema;
+    var quality = cfg.defaultQuality || 'auto';
+    $('#lv-theme-sel').value = theme;
+    $('#lv-glass-tog').checked = glass;
+    $('#lv-cinema-tog').checked = cinema;
+    $('#lv-quality-sel').value = quality;
+    applyDisplayMode(theme, glass, cinema);
+    $('#lv-theme-sel').onchange = function(){ var c=readCfg(); c.lvTheme=this.value; writeCfg(c); applyDisplayMode(this.value, $('#lv-glass-tog').checked, $('#lv-cinema-tog').checked); };
+    $('#lv-glass-tog').onchange = function(){ var c=readCfg(); c.lvGlass=this.checked; writeCfg(c); applyDisplayMode($('#lv-theme-sel').value, this.checked, $('#lv-cinema-tog').checked); };
+    $('#lv-cinema-tog').onchange = function(){ var c=readCfg(); c.lvCinema=this.checked; writeCfg(c); applyDisplayMode($('#lv-theme-sel').value, $('#lv-glass-tog').checked, this.checked); };
+    $('#lv-quality-sel').onchange = function(){ var c=readCfg(); c.defaultQuality=this.value; writeCfg(c); };
+  }
+  function applyDisplayMode(theme, glass, cinema){
+    var h = document.documentElement;
+    h.setAttribute('data-lv-theme', theme || 'dark');
+    h.setAttribute('data-lv-glass', glass ? 'on' : 'off');
+    h.setAttribute('data-lv-cinema', cinema ? 'on' : 'off');
+  }
+  // 初期適用
+  (function initMode(){
+    var c = readCfg();
+    applyDisplayMode(c.lvTheme||'dark', !!c.lvGlass, !!c.lvCinema);
+  })();
+  // 設定ビューが開かれる度に再注入
+  var _origNav = window.navigate;
+  if (typeof _origNav === 'function'){
+    window.navigate = function(name){
+      var r = _origNav.apply(this, arguments);
+      if (name === 'settings') setTimeout(ensureSettingsUI, 80);
+      return r;
+    };
+  }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(ensureSettingsUI, 1500); });
+
+  /* ---------- Google 偽装画面を指定 URL に差し替え ---------- */
+  (function replaceDisguise(){
+    var URL_HTML = 'https://raw.githubusercontent.com/c00lkimx01-creator/raw.git.-.html/refs/heads/main/google.html';
+    var attempts = 0;
+    var iv = setInterval(function(){
+      attempts++;
+      var w = document.getElementById('__disguise');
+      if (w && !w.__v4done){
+        w.__v4done = true;
+        w.innerHTML = '<iframe src="'+URL_HTML+'" referrerpolicy="no-referrer" style="width:100%;height:100%;border:0;background:#fff;"></iframe>';
+        try { document.title = 'Google'; } catch(_){}
+        setTimeout(function(){ try { w.remove(); } catch(_){} }, 4500);
+        clearInterval(iv);
+      }
+      if (attempts > 80) clearInterval(iv);
+    }, 50);
+  })();
+
+  console.log('[v4-patch] applied');
+})();
+</script>
+
+<script>
+/* ============================================================
+   v5 PATCH — channel info & comments を確実に取得・表示
+   ============================================================ */
+(function(){
+  var SIATUBE = 'https://siatube.com';
+  function fetchJSON(url, ms){
+    ms = ms || 7000;
+    var opt = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? { signal: AbortSignal.timeout(ms) } : {};
+    return fetch(url, opt).then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); });
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];}); }
+
+  /* ---------- siatube channel API でチャンネルヘッダを補完 ---------- */
+  async function enrichChannelFromSiatube(channelId){
+    if (!channelId) return null;
+    try {
+      var d = await fetchJSON(SIATUBE + '/api/channel/' + encodeURIComponent(channelId));
+      if (!d || typeof d !== 'object') return null;
+      return d;
+    } catch(_) { return null; }
+  }
+
+  function applySiatubeChannelToPage(d){
+    if (!d) return;
+    try {
+      var nameEl = document.getElementById('channel-page-name');
+      var iconEl = document.getElementById('channel-page-icon');
+      var descEl = document.getElementById('channel-page-desc');
+      var metaEl = document.getElementById('channel-page-meta');
+      var bImg   = document.getElementById('channel-banner-img');
+      var bCv    = document.getElementById('channel-banner-canvas');
+      if (d.title && nameEl) nameEl.innerText = d.title;
+      if (d.avatar && iconEl) iconEl.src = d.avatar;
+      if (d.description && descEl && !descEl.innerText.trim()) descEl.innerText = d.description;
+      if (d.videoCount && metaEl && /--/.test(metaEl.innerText)) metaEl.innerText = d.videoCount;
+      if (d.banner && bImg){
+        bImg.onload = function(){ bImg.style.display='block'; if(bCv) bCv.style.display='none'; };
+        bImg.src = d.banner;
+      }
+    } catch(_){}
+  }
+
+  // openChannel をフック: siatube からも情報を取りに行く
+  if (typeof window.openChannel === 'function'){
+    var _origOpen = window.openChannel;
+    window.openChannel = function(channelName, thumb){
+      var token = Date.now();
+      window.__lvOpenChToken = token;
+      var ret = _origOpen.apply(this, arguments);
+      // resolve channelId then call siatube
+      (async function(){
+        try {
+          var resolver = window.__lvResolveChannelId;
+          var chId = (typeof resolver === 'function') ? await resolver(channelName) : null;
+          if (!chId) return;
+          if (window.__lvOpenChToken !== token) return;
+          var data = await enrichChannelFromSiatube(chId);
+          if (window.__lvOpenChToken !== token) return;
+          applySiatubeChannelToPage(data);
+        } catch(_){}
+      })();
+      return ret;
+    };
+  }
+
+  /* ---------- コメント取得: siatube 優先 + 形式に合わせて描画 ---------- */
+  function renderCommentList(list){
+    var container = document.getElementById('comments-container');
+    var countEl = document.getElementById('comment-count');
+    if (!container) return false;
+    if (!Array.isArray(list) || !list.length) return false;
+    if (countEl) countEl.innerText = list.length;
+    container.innerHTML = list.slice(0, 50).map(function(c){
+      // siatube format: {text, author:{name,avatar,verified}, likes:{text,count}, publishedTime}
+      // invidious format: {content, author, authorThumbnails, likeCount, publishedText}
+      var author = (c.author && (c.author.name || c.author)) || c.author || '名無し';
+      if (typeof author !== 'string') author = String(author||'名無し');
+      var avatar = (c.author && c.author.avatar)
+                || (c.authorThumbnails && c.authorThumbnails[0] && c.authorThumbnails[0].url)
+                || ('https://i.pravatar.cc/40?u=' + encodeURIComponent(author));
+      var likes = (c.likes && (c.likes.count != null ? c.likes.count : c.likes.text))
+                || c.likeCount || 0;
+      var likesText = (typeof likes === 'number') ? (likes>0?likes.toLocaleString():'') : String(likes||'');
+      var when = c.publishedTime || c.publishedText || '';
+      var text = c.text || c.content || (c.contentHtml||'').replace(/<[^>]+>/g,'') || '';
+      var verified = c.author && c.author.verified ? ' <span title="認証済み" style="color:var(--text-secondary);">✓</span>' : '';
+      return '<div class="comment" style="display:flex;gap:12px;margin-bottom:16px;">'
+        + '<img class="comment-avatar" src="'+esc(avatar)+'" loading="lazy" '
+        + 'style="width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:cover;" '
+        + 'onerror="this.src=\'https://i.pravatar.cc/40?u='+encodeURIComponent(author)+'\'">'
+        + '<div class="comment-body" style="flex:1;min-width:0;">'
+        +   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:13px;">'
+        +     '<span style="font-weight:600;">'+esc(author)+'</span>'+verified
+        +     (when?'<span style="color:var(--text-secondary);font-size:12px;">'+esc(when)+'</span>':'')
+        +   '</div>'
+        +   '<div style="font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;">'+esc(text)+'</div>'
+        +   (likesText?'<div style="margin-top:6px;font-size:12px;color:var(--text-secondary);">👍 '+esc(likesText)+'</div>':'')
+        + '</div></div>';
+    }).join('');
+    return true;
+  }
+  window.__lvRenderCommentList = renderCommentList;
+
+  var _origFetchComments = window.fetchComments;
+  window.fetchComments = async function(videoId){
+    if (!videoId) return;
+    var container = document.getElementById('comments-container');
+    if (container && window.lvSkeleton) container.innerHTML = lvSkeleton.comments(5);
+
+    // siatube を先に試す
+    try {
+      var d = await fetchJSON(SIATUBE + '/api/comments?videoId=' + encodeURIComponent(videoId), 8000);
+      var arr = (d && (d.comments || d.data || (Array.isArray(d) ? d : null))) || [];
+      if (Array.isArray(arr) && arr.length && renderCommentList(arr)) return;
+    } catch(_){}
+
+    // 既存実装にフォールバック
+    if (typeof _origFetchComments === 'function'){
+      try { return await _origFetchComments(videoId); } catch(_){}
+    }
+    if (container) container.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">コメントを取得できませんでした</div>';
+  };
+
+  console.log('[v5-patch] channel info + comments enhanced');
+})();
+</script>
+<script>
+/* =========================================================
+   siatube playlist + comments(sort/continuation) patch
+   ========================================================= */
+(function(){
+  var SIATUBE = 'https://siatube.com';
+  function _fj(url, ms){
+    ms = ms||8000;
+    return new Promise(function(resolve, reject){
+      var c = new AbortController();
+      var t = setTimeout(function(){ c.abort(); reject(new Error('timeout')); }, ms);
+      fetch(url, { signal: c.signal }).then(function(r){
+        clearTimeout(t);
+        if (!r.ok) return reject(new Error('HTTP '+r.status));
+        return r.json();
+      }).then(resolve, function(e){ clearTimeout(t); reject(e); });
+    });
+  }
+
+  /* ---------- siatube playlist ----------
+     supports:
+       Standard:        PL...?token=TOKEN
+       RD (mix):        RD...?v=VIDEO_ID
+       Channel uploads: UC...   /   UU...
+       Multiple IDs:    UU...====PL...
+       Embedded(p/i):   PL...==p==token==i==TOKEN
+       Embedded(&):     PL...&token=TOKEN
+     Usage:
+       lvSiaPlaylist('PLxxxx', { token:'...' })
+       lvSiaPlaylist('RDxxxx', { v:'VIDEO_ID' })
+       lvSiaPlaylist('UCxxxx')
+       lvSiaPlaylist('PLaaa==p==token==i==TOKEN')   // embedded
+       lvSiaPlaylist('PLaaa&token=TOKEN')           // embedded
+       lvSiaPlaylist('UUxxx====PLyyy')              // multiple
+       lvSiaPlaylist(rawIdOrPath)                   // pass-through
+  */
+  window.lvSiaPlaylist = async function(idOrPath, opts){
+    opts = opts || {};
+    var path = String(idOrPath||'').trim();
+    if (!path) throw new Error('playlist id required');
+    // すでにクエリ/埋め込み記号を含む場合はそのまま、なければトークン等を付与
+    var hasQuery = /[?&]/.test(path);
+    var hasEmbed = /==p==|==i==|====/.test(path);
+    if (!hasQuery && !hasEmbed){
+      var q = [];
+      if (opts.token) q.push('token=' + encodeURIComponent(opts.token));
+      if (opts.v)     q.push('v=' + encodeURIComponent(opts.v));
+      if (q.length) path += '?' + q.join('&');
+    }
+    var url = SIATUBE + '/api/playlist/' + path;
+    return _fj(url, opts.timeout || 10000);
+  };
+
+  /* ---------- siatube comments (sort + continuation) ---------- */
+  window.lvSiaComments = function(videoId, params){
+    params = params || {};
+    var qs = 'videoId=' + encodeURIComponent(videoId);
+    if (params.sort === 'new') qs += '&sort=new';
+    if (params.continuation)   qs += '&continuation=' + encodeURIComponent(params.continuation);
+    return _fj(SIATUBE + '/api/comments?' + qs, params.timeout || 8000);
+  };
+
+  // 共通レンダラーを使い回す
+  function _renderList(arr){
+    if (typeof window.__lvRenderCommentList === 'function'){
+      return window.__lvRenderCommentList(arr);
+    }
+    var c = document.getElementById('comments-container');
+    if (!c) return false;
+    c.innerHTML = arr.slice(0,30).map(function(x){
+      var a = x.author||'名無し';
+      var t = x.content || x.text || (x.contentHtml||'').replace(/<[^>]+>/g,'');
+      var av = (x.authorThumbnails && x.authorThumbnails[0] && x.authorThumbnails[0].url) || x.avatar || '';
+      return '<div class="comment"><img class="comment-avatar" src="'+av+'" onerror="this.src=\'https://i.pravatar.cc/40?u='+encodeURIComponent(a)+'\'"><div class="comment-body"><div style="font-weight:bold;font-size:13px;margin-bottom:4px;">'+a+'</div><div style="font-size:14px;line-height:1.5;">'+(t||'').replace(/\n/g,'<br>')+'</div></div></div>';
+    }).join('');
+    return true;
+  }
+
+  // fetchComments を siatube(sort 対応 + 続きを読み込むボタン) に置換
+  var _prevFetchComments = window.fetchComments;
+  window.__lvCommentState = { videoId:null, continuation:null, sort:'top', items:[] };
+
+  async function loadComments(videoId, sort, continuation){
+    var d = await window.lvSiaComments(videoId, { sort: sort, continuation: continuation });
+    var arr = (d && (d.comments || d.data || (Array.isArray(d)?d:null))) || [];
+    var cont = (d && (d.continuation || d.nextContinuation || d.continuationToken)) || null;
+    return { items: arr, continuation: cont, raw: d };
+  }
+
+  function ensureLoadMoreButton(){
+    var sec = document.querySelector('.comments-section');
+    if (!sec) return null;
+    var btn = document.getElementById('lv-comments-more');
+    if (!btn){
+      btn = document.createElement('button');
+      btn.id = 'lv-comments-more';
+      btn.textContent = 'コメントをもっと読み込む';
+      btn.style.cssText = 'display:block;margin:16px auto;padding:8px 18px;border-radius:18px;border:1px solid var(--border-color);background:var(--chip-bg);color:var(--text-color);cursor:pointer;font-size:13px;';
+      btn.onclick = async function(){
+        var s = window.__lvCommentState;
+        if (!s.videoId || !s.continuation) return;
+        btn.disabled = true; btn.textContent = '読み込み中...';
+        try {
+          var r = await loadComments(s.videoId, s.sort, s.continuation);
+          s.items = s.items.concat(r.items||[]);
+          s.continuation = r.continuation;
+          _renderList(s.items);
+          var cnt = document.getElementById('comment-count'); if (cnt) cnt.innerText = s.items.length;
+          // 再 append (renderList が container をクリアするため)
+          sec.appendChild(btn);
+        } catch(_){}
+        btn.disabled = false;
+        btn.textContent = s.continuation ? 'コメントをもっと読み込む' : '以上で全てです';
+        if (!s.continuation) btn.style.opacity = '0.6';
+      };
+      sec.appendChild(btn);
+    }
+    return btn;
+  }
+
+  window.fetchComments = async function(videoId, sort){
+    if (!videoId) return;
+    var s = sort || window.__commentSort || 'top';
+    var container = document.getElementById('comments-container');
+    if (container && window.lvSkeleton) container.innerHTML = lvSkeleton.comments(5);
+    try {
+      var r = await loadComments(videoId, s, null);
+      if (r.items && r.items.length){
+        window.__lvCommentState = { videoId: videoId, sort: s, continuation: r.continuation, items: r.items };
+        _renderList(r.items);
+        var cnt = document.getElementById('comment-count'); if (cnt) cnt.innerText = r.items.length;
+        var btn = ensureLoadMoreButton();
+        if (btn){
+          btn.style.opacity = r.continuation ? '1' : '0.6';
+          btn.textContent = r.continuation ? 'コメントをもっと読み込む' : '以上で全てです';
+          btn.disabled = !r.continuation;
+        }
+        return;
+      }
+    } catch(_){}
+    // フォールバック (旧実装)
+    if (typeof _prevFetchComments === 'function'){
+      try { return await _prevFetchComments(videoId, s); } catch(_){}
+    }
+    if (container) container.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">コメントを取得できませんでした</div>';
+  };
+
+  console.log('[v6-patch] siatube playlist + comments(sort/continuation) ready');
+})();
+</script>
+
+<!-- ============================================================
+     v7 PATCH: バナー強化 + スケルトンスクリーン
+     ============================================================ -->
+<style id="__v7_skel_css">
+@keyframes lvShimmer { 0%{background-position:-400px 0;} 100%{background-position:400px 0;} }
+.lv-skel{position:relative;overflow:hidden;background:var(--hover-color);
+  background-image:linear-gradient(90deg, var(--hover-color) 0%, var(--chip-hover) 50%, var(--hover-color) 100%);
+  background-size:800px 100%;animation:lvShimmer 1.4s infinite linear;border-radius:8px;}
+.lv-skel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;row-gap:40px;}
+@media (max-width:1100px){.lv-skel-grid{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:480px){.lv-skel-grid{grid-template-columns:1fr;}}
+.lv-skel-card{display:flex;flex-direction:column;gap:12px;}
+.lv-skel-card .lv-skel-thumb{width:100%;aspect-ratio:16/9;border-radius:12px;}
+.lv-skel-card .lv-skel-row{display:flex;gap:12px;}
+.lv-skel-card .lv-skel-avatar{width:36px;height:36px;border-radius:50%;flex-shrink:0;}
+.lv-skel-card .lv-skel-lines{flex:1;display:flex;flex-direction:column;gap:6px;}
+.lv-skel-card .lv-skel-l1{height:14px;width:92%;border-radius:4px;}
+.lv-skel-card .lv-skel-l2{height:12px;width:60%;border-radius:4px;}
+.lv-skel-card .lv-skel-l3{height:11px;width:40%;border-radius:4px;}
+/* 横スクロール用カード */
+.lv-skel-hrow{display:flex;gap:14px;overflow:hidden;}
+.lv-skel-hcard{flex:0 0 240px;display:flex;flex-direction:column;gap:8px;}
+.lv-skel-hcard .lv-skel-thumb{width:100%;aspect-ratio:16/9;border-radius:12px;}
+.lv-skel-hcard .lv-skel-l1{height:13px;width:90%;border-radius:4px;}
+.lv-skel-hcard .lv-skel-l2{height:11px;width:55%;border-radius:4px;}
+/* ショート用 */
+.lv-skel-short-row{display:flex;gap:12px;overflow:hidden;}
+.lv-skel-short{flex:0 0 160px;display:flex;flex-direction:column;gap:6px;}
+.lv-skel-short .lv-skel-sthumb{width:160px;height:280px;border-radius:12px;}
+.lv-skel-short .lv-skel-l1{height:12px;width:90%;border-radius:4px;}
+.lv-skel-short .lv-skel-l2{height:10px;width:60%;border-radius:4px;}
+/* 検索結果リスト用 */
+.lv-skel-search{display:flex;gap:16px;padding:4px;}
+.lv-skel-search .lv-skel-sthumb{flex-shrink:0;width:360px;aspect-ratio:16/9;border-radius:10px;}
+.lv-skel-search .lv-skel-sinfo{flex:1;display:flex;flex-direction:column;gap:8px;padding:4px 0;}
+.lv-skel-search .lv-skel-l1{height:18px;width:80%;border-radius:4px;}
+.lv-skel-search .lv-skel-l2{height:12px;width:40%;border-radius:4px;}
+.lv-skel-search .lv-skel-l3{height:12px;width:60%;border-radius:4px;}
+@media (max-width:720px){.lv-skel-search .lv-skel-sthumb{width:200px;}}
+/* 関連動画(縦リスト) */
+.lv-skel-related{display:flex;flex-direction:column;gap:10px;}
+.lv-skel-related .lv-skel-ritem{display:flex;gap:8px;}
+.lv-skel-related .lv-skel-rthumb{flex:0 0 168px;aspect-ratio:16/9;border-radius:8px;}
+.lv-skel-related .lv-skel-rinfo{flex:1;display:flex;flex-direction:column;gap:6px;padding-top:4px;}
+.lv-skel-related .lv-skel-l1{height:12px;width:90%;border-radius:4px;}
+.lv-skel-related .lv-skel-l2{height:11px;width:60%;border-radius:4px;}
+/* チャンネル登録リスト用 */
+.lv-skel-sub{display:flex;align-items:center;gap:16px;padding:14px;border-radius:12px;border:1px solid var(--border-color);margin-bottom:10px;}
+.lv-skel-sub .lv-skel-savatar{width:56px;height:56px;border-radius:50%;flex-shrink:0;}
+.lv-skel-sub .lv-skel-sinfo{flex:1;display:flex;flex-direction:column;gap:8px;}
+.lv-skel-sub .lv-skel-l1{height:16px;width:40%;border-radius:4px;}
+.lv-skel-sub .lv-skel-l2{height:11px;width:60%;border-radius:4px;}
+/* バナー用 */
+.lv-skel-banner{width:100%;aspect-ratio:6.2/1;max-height:200px;border-radius:12px;}
+/* コメント用 */
+.lv-skel-comment{display:flex;gap:12px;padding:10px 0;}
+.lv-skel-comment .lv-skel-cavatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;}
+.lv-skel-comment .lv-skel-cinfo{flex:1;display:flex;flex-direction:column;gap:6px;}
+.lv-skel-comment .lv-skel-l1{height:11px;width:30%;border-radius:4px;}
+.lv-skel-comment .lv-skel-l2{height:13px;width:90%;border-radius:4px;}
+.lv-skel-comment .lv-skel-l3{height:13px;width:60%;border-radius:4px;}
+</style>
+<script id="__v7_skel_js">
+(function lvSkeleton(){
+  'use strict';
+  function repeat(n, html){ var out=''; for (var i=0;i<n;i++) out+=html; return out; }
+
+  function gridCard(){
+    return '<div class="lv-skel-card">'
+      + '<div class="lv-skel lv-skel-thumb"></div>'
+      + '<div class="lv-skel-row">'
+      +   '<div class="lv-skel lv-skel-avatar"></div>'
+      +   '<div class="lv-skel-lines">'
+      +     '<div class="lv-skel lv-skel-l1"></div>'
+      +     '<div class="lv-skel lv-skel-l2"></div>'
+      +     '<div class="lv-skel lv-skel-l3"></div>'
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+  }
+  function hCard(){
+    return '<div class="lv-skel-hcard">'
+      + '<div class="lv-skel lv-skel-thumb"></div>'
+      + '<div class="lv-skel lv-skel-l1"></div>'
+      + '<div class="lv-skel lv-skel-l2"></div>'
+      + '</div>';
+  }
+  function shortCard(){
+    return '<div class="lv-skel-short">'
+      + '<div class="lv-skel lv-skel-sthumb"></div>'
+      + '<div class="lv-skel lv-skel-l1"></div>'
+      + '<div class="lv-skel lv-skel-l2"></div>'
+      + '</div>';
+  }
+  function searchItem(){
+    return '<div class="lv-skel-search">'
+      + '<div class="lv-skel lv-skel-sthumb"></div>'
+      + '<div class="lv-skel-sinfo">'
+      +   '<div class="lv-skel lv-skel-l1"></div>'
+      +   '<div class="lv-skel lv-skel-l2"></div>'
+      +   '<div class="lv-skel lv-skel-l3"></div>'
+      + '</div>'
+      + '</div>';
+  }
+  function relatedItem(){
+    return '<div class="lv-skel-ritem">'
+      + '<div class="lv-skel lv-skel-rthumb"></div>'
+      + '<div class="lv-skel-rinfo">'
+      +   '<div class="lv-skel lv-skel-l1"></div>'
+      +   '<div class="lv-skel lv-skel-l2"></div>'
+      + '</div>'
+      + '</div>';
+  }
+  function subItem(){
+    return '<div class="lv-skel-sub">'
+      + '<div class="lv-skel lv-skel-savatar"></div>'
+      + '<div class="lv-skel-sinfo">'
+      +   '<div class="lv-skel lv-skel-l1"></div>'
+      +   '<div class="lv-skel lv-skel-l2"></div>'
+      + '</div>'
+      + '</div>';
+  }
+  function commentItem(){
+    return '<div class="lv-skel-comment">'
+      + '<div class="lv-skel lv-skel-cavatar"></div>'
+      + '<div class="lv-skel-cinfo">'
+      +   '<div class="lv-skel lv-skel-l1"></div>'
+      +   '<div class="lv-skel lv-skel-l2"></div>'
+      +   '<div class="lv-skel lv-skel-l3"></div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  window.lvSkel = {
+    // grid: コンテナが既に display:grid (.video-grid) ならラッパー無しで子要素を直接挿入
+    grid: function(el, n){
+      if (!el) return;
+      var isGrid = el.classList && el.classList.contains('video-grid');
+      if (isGrid) {
+        el.innerHTML = repeat(n||9, gridCard());
+      } else {
+        el.innerHTML = '<div class="lv-skel-grid">' + repeat(n||9, gridCard()) + '</div>';
+      }
+    },
+    hrow: function(el, n){ if (!el) return; el.innerHTML = '<div class="lv-skel-hrow">' + repeat(n||6, hCard()) + '</div>'; },
+    shortsRow: function(el, n){ if (!el) return; el.innerHTML = '<div class="lv-skel-short-row">' + repeat(n||6, shortCard()) + '</div>'; },
+    searchList: function(el, n){ if (!el) return; el.innerHTML = repeat(n||6, searchItem()); },
+    related: function(el, n){ if (!el) return; el.innerHTML = '<div class="lv-skel-related">' + repeat(n||8, relatedItem()) + '</div>'; },
+    subs: function(el, n){ if (!el) return; el.innerHTML = repeat(n||6, subItem()); },
+    comments: function(el, n){ if (!el) return; el.innerHTML = repeat(n||5, commentItem()); },
+    banner: function(el){ if (!el) return; el.innerHTML = '<div class="lv-skel lv-skel-banner"></div>'; }
+  };
+
+  // ヘルパー: 「読み込み中…」プレースホルダを skeleton に置換
+  function $(id){ return document.getElementById(id); }
+
+  /* -------- switchChannelTab フック: スケルトン挿入 -------- */
+  var origSwitch = window.switchChannelTab;
+  if (typeof origSwitch === 'function') {
+    window.switchChannelTab = function(tab){
+      var ret = origSwitch.apply(this, arguments);
+      try {
+        if (tab === 'home') {
+          lvSkel.hrow($('channel-home-row'), 6);
+          lvSkel.shortsRow($('channel-home-shorts-row'), 6);
+          lvSkel.hrow($('channel-home-popular-row'), 6);
+          lvSkel.grid($('channel-home-grid'), 6);
+        } else if (tab === 'videos') {
+          lvSkel.grid($('channel-grid'), 9);
+        } else if (tab === 'shorts') {
+          var sg = $('channel-shorts-grid');
+          if (sg) sg.innerHTML = '<div class="lv-skel-short-row" style="flex-wrap:wrap;">' + (function(){ var h=''; for(var i=0;i<10;i++) h += '<div class="lv-skel-short"><div class="lv-skel lv-skel-sthumb"></div><div class="lv-skel lv-skel-l1"></div></div>'; return h; })() + '</div>';
+        } else if (tab === 'live') {
+          lvSkel.grid($('channel-live-grid'), 6);
+        } else if (tab === 'playlists') {
+          var pl = $('channel-playlists-list'); if (pl) pl.innerHTML = (function(){ var h=''; for(var i=0;i<4;i++) h += subItem(); return h; })();
+        } else if (tab === 'collabs') {
+          var cg = $('channel-collabs-grid'); if (cg) lvSkel.grid(cg, 6);
+        }
+      } catch(e){}
+      return ret;
+    };
+  }
+
+  /* -------- openChannel フック: バナー / アイコン /メタにスケルトン -------- */
+  var origOpen = window.openChannel;
+  if (typeof origOpen === 'function') {
+    window.openChannel = function(){
+      try {
+        var wrap = $('channel-banner-wrap');
+        if (wrap) {
+          // 既存の img/canvas は残しつつ、スケルトンを overlay
+          var oldSkel = wrap.querySelector('.lv-skel-banner-overlay');
+          if (oldSkel) oldSkel.remove();
+          var overlay = document.createElement('div');
+          overlay.className = 'lv-skel lv-skel-banner lv-skel-banner-overlay';
+          overlay.style.position = 'absolute';
+          overlay.style.inset = '0';
+          overlay.style.zIndex = '1';
+          if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
+          wrap.appendChild(overlay);
+          // バナー画像が読み込まれたらスケルトンを除去
+          var bImg = $('channel-banner-img');
+          if (bImg) {
+            var clear = function(){ overlay.remove(); };
+            bImg.addEventListener('load', clear, { once:true });
+            bImg.addEventListener('error', clear, { once:true });
+            // 4秒で自動的に消す (フォールバック)
+            setTimeout(clear, 4500);
+          } else { setTimeout(function(){ overlay.remove(); }, 3000); }
+        }
+      } catch(e){}
+      return origOpen.apply(this, arguments);
+    };
+  }
+
+  /* -------- triggerSearch フック: 初回ロード時のみ skeleton -------- */
+  var origTrigger = window.triggerSearch;
+  if (typeof origTrigger === 'function') {
+    window.triggerSearch = function(query, ctx, append){
+      try {
+        if (!append) {
+          if (ctx === 'search') { lvSkel.searchList($('search-results-list'), 6); }
+          else if (ctx === 'related') { lvSkel.related($('related-videos'), 8); }
+          else if (ctx === 'trend' || ctx === 'home' || ctx === undefined || ctx === '') {
+            if (window.currentView === 'home') lvSkel.grid($('home-grid'), 9);
+          }
+          else if (ctx === 'channel-videos') { lvSkel.grid($('channel-grid'), 9); }
+          else if (ctx === 'channel-live')   { lvSkel.grid($('channel-live-grid'), 6); }
+          else if (ctx === 'channel-shorts') {
+            var sg = $('channel-shorts-grid');
+            if (sg) sg.innerHTML = '<div class="lv-skel-short-row" style="flex-wrap:wrap;">' + (function(){ var h=''; for(var i=0;i<10;i++) h += '<div class="lv-skel-short"><div class="lv-skel lv-skel-sthumb"></div><div class="lv-skel lv-skel-l1"></div></div>'; return h; })() + '</div>';
+          }
+          else if (ctx === 'channel' || ctx === 'channel-home') {
+            lvSkel.hrow($('channel-home-row'), 6);
+            lvSkel.grid($('channel-home-grid'), 6);
+          }
+          else if (ctx === 'channel-home-shorts') { lvSkel.shortsRow($('channel-home-shorts-row'), 6); }
+        }
+      } catch(e){}
+      return origTrigger.apply(this, arguments);
+    };
+  }
+
+  /* -------- 検索画面遷移時: ホーム/検索のスケルトン -------- */
+  var origNavigate = window.navigate;
+  if (typeof origNavigate === 'function') {
+    window.navigate = function(view){
+      var ret = origNavigate.apply(this, arguments);
+      try {
+        if (view === 'subscriptions') {
+          var sg = $('subs-grid');
+          if (sg && !sg.children.length) lvSkel.subs(sg, 5);
+        }
+      } catch(e){}
+      return ret;
+    };
+  }
+
+  /* -------- コメントロード時もスケルトン -------- */
+  var origFetchComments = window.fetchComments;
+  if (typeof origFetchComments === 'function') {
+    window.fetchComments = function(){
+      try { lvSkel.comments($('comments-container'), 5); } catch(e){}
+      return origFetchComments.apply(this, arguments);
+    };
+  }
+
+  console.log('[v7-skel] skeletons installed');
+})();
+
+/* ============================================================
+   v7 PATCH 2: バナー取得の信頼性向上
+   ============================================================ */
+(function lvBannerFix(){
+  'use strict';
+  function $(id){ return document.getElementById(id); }
+
+  // YouTube 直リンクのバナー候補 (チャンネル ID 単位)
+  function youtubeBannerCandidates(channelId){
+    if (!channelId) return [];
+    // 既知の公開 URL パターン。失敗しても無害。
+    return [
+      'https://yt3.googleusercontent.com/' + channelId + '=w2120-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj'
+    ];
+  }
+
+  // 既存 drawChannelBanner を強化: 失敗時に invidious proxy banner を試す
+  var origDraw = window.drawChannelBanner;
+  window.drawChannelBanner = function(bannerUrl){
+    var img = $('channel-banner-img'), canvas = $('channel-banner-canvas');
+    if (!img || !canvas) { if (origDraw) return origDraw(bannerUrl); return; }
+    if (!bannerUrl) { return origDraw ? origDraw(null) : undefined; }
+    var tried = false;
+    img.onerror = function(){
+      if (tried) { img.style.display='none'; canvas.style.display='block'; try{ window.drawFallbackBanner && window.drawFallbackBanner(canvas); }catch(e){} return; }
+      tried = true;
+      // CORS / referrer 制限による失敗を回避するため images.weserv 経由でリトライ
+      var prox = 'https://images.weserv.nl/?url=' + encodeURIComponent(bannerUrl.replace(/^https?:\/\//,''));
+      img.onerror = function(){ img.style.display='none'; canvas.style.display='block'; try{ window.drawFallbackBanner && window.drawFallbackBanner(canvas); }catch(e){} };
+      img.src = prox;
+    };
+    img.style.display = 'block';
+    canvas.style.display = 'none';
+    img.src = bannerUrl;
+  };
+
+  // openChannel 解決後にもう一度バナー取得を試す
+  function tryFetchBanner(channelId, channelName){
+    if (!channelId) return;
+    // siatube
+    fetch('https://siatube.com/api/channel/' + encodeURIComponent(channelId), { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (!d) return;
+        var img = $('channel-banner-img');
+        var hasBanner = img && img.style.display === 'block' && img.src && !/data:/.test(img.src);
+        if (hasBanner) return;
+        if (d.banner) window.drawChannelBanner(d.banner);
+      }).catch(function(){});
+  }
+
+  // openChannel を更にラップ
+  var prevOpen = window.openChannel;
+  if (typeof prevOpen === 'function') {
+    window.openChannel = function(channelName, thumb, channelId){
+      var ret = prevOpen.apply(this, arguments);
+      setTimeout(function(){
+        var ci = (typeof currentChannelId !== 'undefined' && currentChannelId) || channelId;
+        tryFetchBanner(ci, channelName);
+      }, 700);
+      setTimeout(function(){
+        var ci = (typeof currentChannelId !== 'undefined' && currentChannelId) || channelId;
+        var img = $('channel-banner-img');
+        var hasBanner = img && img.style.display === 'block' && img.src && !/data:/.test(img.src);
+        if (!hasBanner) tryFetchBanner(ci, channelName);
+      }, 2200);
+      return ret;
+    };
+  }
+
+  console.log('[v7-banner] banner fetch hardened');
+})();
+</script>
+
+
+<!-- ============================================================
+     v8 PATCH: channel-videos を siatube + invidious 並列取得 /
+              チャンネルアイコン強制統一 / skeleton 微調整
+     ============================================================ -->
+<script id="__v8_patch_js">
+(function lvChannelV8(){
+  'use strict';
+  var SIATUBE = 'https://siatube.com';
+
+  function fetchTimeout(url, ms){
+    return new Promise(function(resolve){
+      var done = false;
+      var t = setTimeout(function(){ if (!done){ done=true; resolve(null); } }, ms||4500);
+      fetch(url, { cache: 'no-store' }).then(function(r){
+        if (!r || !r.ok) { if (!done){ done=true; clearTimeout(t); resolve(null); } return; }
+        return r.json();
+      }).then(function(j){ if (!done){ done=true; clearTimeout(t); resolve(j||null); } })
+      .catch(function(){ if (!done){ done=true; clearTimeout(t); resolve(null); } });
+    });
+  }
+
+  // siatube の channel 応答を invidious 互換の videos 配列に正規化
+  function siatubeToVideos(d, fallbackChannel){
+    if (!d) return null;
+    var raw = d.videos || d.relatedStreams || d.latestVideos || [];
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    var chAvatar = d.avatar || (d.authorThumbnails && d.authorThumbnails[0] && d.authorThumbnails[0].url) || '';
+    var chTitle  = d.title || d.author || fallbackChannel || '';
+    return raw.map(function(v){
+      var vid = v.videoId || v.id || v.url && String(v.url).match(/[?&]v=([\w-]{6,})/) && RegExp.$1;
+      if (!vid) return null;
+      var len = v.lengthSeconds || v.duration || 0;
+      return {
+        videoId: vid,
+        title: v.title || '',
+        author: v.author || v.uploaderName || chTitle,
+        authorId: v.authorId || v.uploaderUrl || null,
+        authorThumbnails: (v.authorThumbnails && v.authorThumbnails.length) ? v.authorThumbnails : (chAvatar ? [{ url: chAvatar }] : []),
+        lengthSeconds: len,
+        viewCount: v.viewCount || v.views || 0,
+        publishedText: v.publishedText || v.uploadedDate || '',
+        published: v.published || (v.uploaded ? Math.floor(v.uploaded/1000) : 0),
+        liveNow: v.liveNow || false
+      };
+    }).filter(Boolean);
+  }
+
+  function channelInfoFromSiatube(d, fallbackName){
+    if (!d) return null;
+    return {
+      author: d.title || fallbackName,
+      authorId: d.id || d.authorId || null,
+      authorThumbnails: d.avatar ? [{ url: d.avatar }] : (d.authorThumbnails || []),
+      authorBanners: d.banner ? [{ url: d.banner, width: 2120 }] : (d.authorBanners || []),
+      subCount: d.subscriberCount || d.subCount || 0,
+      videoCount: d.videoCount || (d.videos ? d.videos.length : 0),
+      description: d.description || ''
+    };
+  }
+
+  // ID 解決ヘルパ
+  function getChannelId(){
+    return (typeof currentChannelId !== 'undefined' && currentChannelId) ||
+           (window.__lvOpenChId) || null;
+  }
+
+  // 既存 fetchChannelVideos をラップ: invidious と siatube を並列で叩いて先勝ち
+  var origFetchChannelVideos = window.fetchChannelVideos;
+  window.fetchChannelVideos = function(channelName, page){
+    var p = page || 1;
+    return new Promise(function(resolve){
+      var settled = false;
+      function done(r){ if (settled) return; settled = true; resolve(r); }
+
+      // 1) invidious (既存)
+      var pInv = (typeof origFetchChannelVideos === 'function')
+        ? Promise.resolve(origFetchChannelVideos(channelName, p)).catch(function(){ return null; })
+        : Promise.resolve(null);
+      pInv.then(function(r){
+        if (r && r.videos && r.videos.length) {
+          // チャンネル全体のアバターで全動画を正規化
+          var chAvatar = r.channelInfo && r.channelInfo.authorThumbnails && r.channelInfo.authorThumbnails.length
+            ? r.channelInfo.authorThumbnails[r.channelInfo.authorThumbnails.length-1].url : null;
+          if (chAvatar) {
+            r.videos = r.videos.map(function(v){
+              if (!v.authorThumbnails || !v.authorThumbnails.length) v.authorThumbnails = [{ url: chAvatar }];
+              return v;
+            });
+          }
+          done(r);
+        }
+      });
+
+      // 2) siatube (channel ID 必要)
+      (async function(){
+        try {
+          var chId = getChannelId();
+          if (!chId && typeof window.__lvResolveChannelId === 'function') {
+            chId = await window.__lvResolveChannelId(channelName).catch(function(){ return null; });
+          }
+          if (!chId) return;
+          var d = await fetchTimeout(SIATUBE + '/api/channel/' + encodeURIComponent(chId), 4500);
+          var vids = siatubeToVideos(d, channelName);
+          if (vids && vids.length) {
+            var info = channelInfoFromSiatube(d, channelName);
+            done({ videos: vids, channelInfo: info });
+          }
+        } catch(_){}
+      })();
+
+      // 3) どちらも失敗した場合 — invidious の結果(空でも)を待って返す
+      pInv.then(function(r){ done(r || { videos: [], channelInfo: null }); });
+
+      // 安全網: 6 秒で諦める
+      setTimeout(function(){ done({ videos: [], channelInfo: null }); }, 6000);
+    });
+  };
+  try { fetchChannelVideos = window.fetchChannelVideos; } catch(e){}
+
+  /* ---------- 動画カードのチャンネルアイコン強制統一 ----------
+     チャンネル動画(channel-home / channel-videos)を表示する際、
+     全動画の authorThumb をそのチャンネルのアバターに置き換える。 */
+  var origTriggerSearch = window.triggerSearch;
+  window.triggerSearch = function(query, ctx, append){
+    return origTriggerSearch.apply(this, arguments);
+  };
+
+  // renderResults をフック: ctx が channel系なら authorThumb を強制統一
+  var origRenderResults = window.renderResults;
+  if (typeof origRenderResults === 'function') {
+    window.renderResults = function(videos, append){
+      try {
+        var ctx = window.searchContext;
+        if ((ctx === 'channel' || ctx === 'channel-home' || ctx === 'channel-videos') && Array.isArray(videos)) {
+          var chAvatar =
+            (window.currentChannelData && window.currentChannelData.thumb) ||
+            (document.getElementById('channel-page-icon') && document.getElementById('channel-page-icon').src) || '';
+          if (chAvatar && !/^data:|pravatar\.cc/.test(chAvatar)) {
+            videos = videos.map(function(v){
+              if (!v) return v;
+              // pravatar / 空 / data: は強制差し替え
+              if (!v.authorThumb || /pravatar\.cc|^data:/.test(v.authorThumb)) v.authorThumb = chAvatar;
+              return v;
+            });
+          }
+        }
+      } catch(e){}
+      return origRenderResults.call(this, videos, append);
+    };
+  }
+
+  /* ---------- 横スクロール (channel-home-row 等) も同様に置換 ---------- */
+  function forceChannelAvatar(videos){
+    try {
+      var chAvatar =
+        (window.currentChannelData && window.currentChannelData.thumb) ||
+        (document.getElementById('channel-page-icon') && document.getElementById('channel-page-icon').src) || '';
+      if (!chAvatar || /^data:|pravatar\.cc/.test(chAvatar)) return videos;
+      return (videos||[]).map(function(v){
+        if (v && (!v.authorThumb || /pravatar\.cc|^data:/.test(v.authorThumb))) v.authorThumb = chAvatar;
+        return v;
+      });
+    } catch(e){ return videos; }
+  }
+  var _rcHome = window.renderChannelHomeRow;
+  if (typeof _rcHome === 'function') {
+    window.renderChannelHomeRow = function(videos){ return _rcHome.call(this, forceChannelAvatar(videos)); };
+  }
+  var _rcHomeShorts = window.renderChannelHomeShortsRow;
+  if (typeof _rcHomeShorts === 'function') {
+    window.renderChannelHomeShortsRow = function(videos){ return _rcHomeShorts.call(this, forceChannelAvatar(videos)); };
+  }
+  var _rcShorts = window.renderChannelShorts;
+  if (typeof _rcShorts === 'function') {
+    window.renderChannelShorts = function(videos, append){ return _rcShorts.call(this, forceChannelAvatar(videos), append); };
+  }
+  var _rcLive = window.renderChannelLive;
+  if (typeof _rcLive === 'function') {
+    window.renderChannelLive = function(videos, append){ return _rcLive.call(this, forceChannelAvatar(videos), append); };
+  }
+
+  console.log('[v8-channel] siatube+invidious race & avatar unification applied');
+})();
+</script>
+
 </body></html>
