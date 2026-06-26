@@ -12075,5 +12075,259 @@ body.cinematic .player-wrap{
 })();
 </script>
 
-</body></html>
+<style id="lov-patch-style">
+/* === Device detection classes === */
+html[data-device="mobile"] .categories-bar{left:0 !important;padding:0 12px;}
+html[data-device="mobile"] .sidebar{display:none !important;}
+html[data-device="mobile"] main{margin-left:0 !important;padding:12px !important;}
+html[data-device="mobile"] header{padding:0 8px !important;}
+html[data-device="mobile"] .header-center{margin:0 8px !important;}
+html[data-device="tablet"] main{margin-left:72px !important;}
 
+/* === Active sidebar icon red in dark mode === */
+[data-theme="dark"] .sidebar-item.active{color:#ff0000 !important;}
+[data-theme="dark"] .sidebar-item.active svg{fill:#ff0000 !important;stroke:#ff0000 !important;}
+
+/* === Shorts view: hide top bar + side menu, remove rounded corners === */
+body[data-view="shorts"] header,
+body[data-view="shorts"] .categories-bar,
+body[data-view="shorts"] .sidebar{display:none !important;}
+body[data-view="shorts"] main{margin:0 !important;padding:0 !important;min-height:100vh !important;}
+body[data-view="shorts"] #view-shorts,
+body[data-view="shorts"] #view-shorts *,
+body[data-view="shorts"] .shorts-container,
+body[data-view="shorts"] .shorts-container *,
+body[data-view="shorts"] .shorts-item,
+body[data-view="shorts"] .shorts-item *,
+body[data-view="shorts"] video{border-radius:0 !important;}
+
+/* === Back button for shorts === */
+#lov-shorts-back{
+  position:fixed;top:12px;left:12px;z-index:9999;
+  width:42px;height:42px;border-radius:50%;
+  background:rgba(0,0,0,0.55);color:#fff;
+  display:none;align-items:center;justify-content:center;
+  border:none;cursor:pointer;
+}
+#lov-shorts-back svg{width:24px;height:24px;fill:#fff;}
+body[data-view="shorts"] #lov-shorts-back{display:flex;}
+
+/* === Related shorts strip below current short === */
+#lov-related-shorts{
+  position:fixed;left:0;right:0;bottom:0;z-index:9998;
+  display:none;gap:8px;padding:8px;overflow-x:auto;
+  background:rgba(0,0,0,0.6);scroll-snap-type:x mandatory;
+}
+body[data-view="shorts"] #lov-related-shorts{display:flex;}
+#lov-related-shorts .lov-rel{
+  flex:0 0 auto;width:90px;aspect-ratio:9/16;
+  background:#222;border-radius:0;overflow:hidden;cursor:pointer;
+  scroll-snap-align:start;position:relative;
+}
+#lov-related-shorts .lov-rel img{width:100%;height:100%;object-fit:cover;}
+</style>
+<button id="lov-shorts-back" aria-label="戻る" onclick="(function(){try{if(window.navigate)navigate('home');else history.back();}catch(e){history.back();}})()">
+<svg viewBox="0 0 24 24"><path d="M15.5 19 8.5 12l7-7 1.4 1.4L11.3 12l5.6 5.6z"/></svg>
+</button>
+<div id="lov-related-shorts"></div>
+<script>
+(function(){
+  // ---- Device detection ----
+  function detectDevice(){
+    var ua=navigator.userAgent;
+    var w=window.innerWidth;
+    var dev='desktop';
+    if(/Android.*Mobile|iPhone|iPod/i.test(ua)||w<=600) dev='mobile';
+    else if(/iPad|Tablet|Android(?!.*Mobile)/i.test(ua)||(w>600&&w<=1024)) dev='tablet';
+    else if(/CrOS/i.test(ua)) dev='chromebook';
+    document.documentElement.dataset.device=dev;
+  }
+  detectDevice();
+  window.addEventListener('resize',detectDevice);
+
+  // ---- Auto theme: follow OS unless user toggled ----
+  try{
+    var userSet=localStorage.getItem('lov-user-theme');
+    function applyOS(){
+      var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', dark?'dark':'light');
+    }
+    if(!userSet){
+      applyOS();
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
+        if(!localStorage.getItem('lov-user-theme')) applyOS();
+      });
+    }
+    // Wrap toggleTheme so manual toggle is remembered
+    if(typeof window.toggleTheme==='function'){
+      var orig=window.toggleTheme;
+      window.toggleTheme=function(){
+        orig.apply(this,arguments);
+        localStorage.setItem('lov-user-theme', document.documentElement.getAttribute('data-theme')||'light');
+      };
+    }
+  }catch(e){}
+
+  // ---- Shorts view detection ----
+  function syncShortsView(){
+    var s=document.getElementById('view-shorts');
+    var active=s && s.classList.contains('active');
+    if(active) document.body.dataset.view='shorts';
+    else if(document.body.dataset.view==='shorts') delete document.body.dataset.view;
+    if(active) buildRelatedShorts();
+  }
+  var mo=new MutationObserver(syncShortsView);
+  document.addEventListener('DOMContentLoaded',function(){
+    var s=document.getElementById('view-shorts');
+    if(s) mo.observe(s,{attributes:true,attributeFilter:['class']});
+    syncShortsView();
+  });
+  // Also poll briefly in case view created later
+  var tries=0;var iv=setInterval(function(){
+    var s=document.getElementById('view-shorts');
+    if(s){mo.observe(s,{attributes:true,attributeFilter:['class']});syncShortsView();clearInterval(iv);}
+    if(++tries>60) clearInterval(iv);
+  },500);
+
+  // ---- Related shorts: clone other shorts items into bottom strip ----
+  function buildRelatedShorts(){
+    var bar=document.getElementById('lov-related-shorts');
+    if(!bar) return;
+    var items=document.querySelectorAll('#view-shorts .shorts-item, #view-shorts .shorts-container > *');
+    if(!items.length) return;
+    bar.innerHTML='';
+    items.forEach(function(it,i){
+      if(i===0) return;
+      var img=it.querySelector('img');
+      var d=document.createElement('div');
+      d.className='lov-rel';
+      if(img) d.innerHTML='<img src="'+img.src+'" alt="">';
+      d.onclick=function(){it.scrollIntoView({behavior:'smooth',block:'start'});};
+      bar.appendChild(d);
+    });
+  }
+
+  // ---- Faster short thumbnails on home/search: eager load ----
+  var lazyObserver=new MutationObserver(function(){
+    document.querySelectorAll('.video-card img, .search-result-thumb img').forEach(function(im){
+      if(im.loading==='lazy') im.loading='eager';
+      im.decoding='async';
+    });
+  });
+  document.addEventListener('DOMContentLoaded',function(){
+    lazyObserver.observe(document.body,{childList:true,subtree:true});
+  });
+})();
+</script>
+<style id="lov-patch2-style">
+/* === YouTube-like polish === */
+:root{--yt-red:#ff0000;}
+header{box-shadow:none !important;border-bottom:0 !important;}
+.logo{font-family:'Roboto','Arial',sans-serif !important;}
+.search-bar{border-radius:40px !important;height:40px !important;}
+.search-bar input{font-size:14px !important;}
+.search-bar button{border-radius:0 40px 40px 0 !important;width:64px !important;}
+[data-theme="dark"] .search-bar{background:#121212 !important;border-color:#303030 !important;}
+[data-theme="dark"] .search-bar button{background:#222 !important;}
+.icon-btn{border-radius:50% !important;width:40px !important;height:40px !important;}
+.icon-btn:hover{background:rgba(0,0,0,0.06) !important;}
+[data-theme="dark"] .icon-btn:hover{background:rgba(255,255,255,0.1) !important;}
+.category-chip{border-radius:8px !important;font-size:14px !important;padding:6px 12px !important;height:32px !important;display:inline-flex !important;align-items:center !important;}
+.category-chip.active{background:#0f0f0f !important;color:#fff !important;}
+[data-theme="dark"] .category-chip.active{background:#f1f1f1 !important;color:#0f0f0f !important;}
+.video-card .thumbnail-container{border-radius:12px !important;}
+.video-title{font-size:14px !important;font-weight:500 !important;line-height:1.4 !important;}
+.sidebar-item{transition:background .12s !important;}
+
+/* Subscribe / action button feel */
+button.subscribe-btn,.subscribe-btn{
+  background:#0f0f0f !important;color:#fff !important;border-radius:18px !important;
+  padding:0 16px !important;height:36px !important;font-weight:500 !important;
+}
+[data-theme="dark"] button.subscribe-btn,[data-theme="dark"] .subscribe-btn{
+  background:#f1f1f1 !important;color:#0f0f0f !important;
+}
+
+/* Retry box (replaces 読み込みに失敗) */
+.lov-retry{
+  padding:24px;text-align:center;color:var(--text-secondary);
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+}
+.lov-retry button{
+  background:#0f0f0f;color:#fff;border-radius:18px;
+  padding:0 16px;height:36px;font-weight:500;cursor:pointer;
+}
+[data-theme="dark"] .lov-retry button{background:#f1f1f1;color:#0f0f0f;}
+</style>
+<script>
+(function(){
+  // ---- Replace "読み込みに失敗しました" with retry UI ----
+  function buildRetry(target){
+    target.innerHTML='';
+    var box=document.createElement('div');
+    box.className='lov-retry';
+    box.innerHTML='<div>少々お待ちください…</div><button type="button">再試行</button>';
+    box.querySelector('button').onclick=function(){
+      try{
+        var hash=location.hash||'#/';
+        location.hash='#/_reload_';
+        setTimeout(function(){location.hash=hash;},10);
+      }catch(e){location.reload();}
+    };
+    target.appendChild(box);
+    // Auto-retry once after 2s
+    setTimeout(function(){
+      if(document.body.contains(box)){
+        try{
+          var hash=location.hash||'#/';
+          var cur=hash;
+          location.hash='#/_r_';
+          setTimeout(function(){location.hash=cur;},10);
+        }catch(e){}
+      }
+    },2000);
+  }
+  var errObs=new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType!==1) return;
+        var t=n.textContent||'';
+        if(t.indexOf('読み込みに失敗')>=0){
+          var host=n.parentElement||n;
+          buildRetry(host);
+        }
+      });
+    });
+  });
+  document.addEventListener('DOMContentLoaded',function(){
+    errObs.observe(document.body,{childList:true,subtree:true});
+    // Sweep existing
+    document.querySelectorAll('div').forEach(function(d){
+      if(d.children.length===0 && (d.textContent||'').indexOf('読み込みに失敗')>=0){
+        buildRetry(d.parentElement||d);
+      }
+    });
+  });
+
+  // ---- Resilient fetch: retry transient failures ----
+  var origFetch=window.fetch;
+  window.fetch=function(input,init){
+    var attempts=0, max=3;
+    function go(){
+      return origFetch(input,init).then(function(r){
+        if(!r.ok && r.status>=500 && attempts<max){
+          attempts++;return new Promise(function(res){setTimeout(function(){res(go());},300*attempts);});
+        }
+        return r;
+      }).catch(function(e){
+        if(attempts<max){
+          attempts++;return new Promise(function(res){setTimeout(function(){res(go());},300*attempts);});
+        }
+        throw e;
+      });
+    }
+    return go();
+  };
+})();
+</script>
+</body></html>
